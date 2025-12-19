@@ -1,7 +1,13 @@
-import {App, Editor, MarkdownView, Modal, Notice, Plugin} from 'obsidian';
-import {DEFAULT_SETTINGS, MyPluginSettings, SampleSettingTab} from "./settings";
+import { App, Plugin, TFile, Notice } from 'obsidian';
+import { DEFAULT_SETTINGS, MyPluginSettings, SampleSettingTab } from "./settings";
 
-// Remember to rename these classes and interfaces!
+interface CardData {
+	title?: string;
+	desc?: string;
+	icon?: string;
+	picture?: string;
+	action?: string;
+}
 
 export default class MyPlugin extends Plugin {
 	settings: MyPluginSettings;
@@ -9,91 +15,124 @@ export default class MyPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
-		// This creates an icon in the left ribbon.
-		this.addRibbonIcon('dice', 'Sample', (evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
-		});
+		this.registerMarkdownCodeBlockProcessor("card-buttons", (source, el, ctx) => {
+			const container = el.createEl("div", { cls: "card-buttons-container" });
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status bar text');
+			const cardSections = source
+				.split(/\[card\]/)
+				.filter(s => s.trim() !== "")
+				.slice(0, 6);
 
-		// This adds a simple command that can be triggered anywhere
-		this.addCommand({
-			id: 'open-modal-simple',
-			name: 'Open modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
-			}
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'replace-selected',
-			name: 'Replace selected content',
-			editorCallback: (editor: Editor, view: MarkdownView) => {
-				editor.replaceSelection('Sample editor command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-modal-complex',
-			name: 'Open modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
+			cardSections.forEach((section) => {
+				const data = this.parseSection(section);
+				const cardEl = container.createEl("div", { cls: "card-item" });
+				if (data.picture) {
+					const resolvedPath = this.resolveImagePath(data.picture);
+					if (resolvedPath) {
+						const imgContainer = cardEl.createEl("div", { cls: "card-img-container" });
+						imgContainer.createEl("img", {
+							attr: { src: resolvedPath },
+							cls: "card-img"
+						});
 					}
-
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
 				}
-				return false;
+
+				const infoEl = cardEl.createEl("div", { cls: "card-info" });
+				if (data.title) infoEl.createEl("div", { text: data.title, cls: "card-title" });
+				if (data.desc) infoEl.createEl("p", { text: data.desc, cls: "card-desc" });
+
+				if (data.action) {
+					cardEl.addClass("is-clickable");
+					cardEl.onClickEvent(() => {
+						this.handleAction(data.action!);
+					});
+				}
+			});
+		});
+
+		this.addSettingTab(new SampleSettingTab(this.app, this));
+	}
+
+	resolveImagePath(sourcePath: string): string {
+		const file = this.app.metadataCache.getFirstLinkpathDest(sourcePath, "");
+		if (file instanceof TFile) {
+			return this.app.vault.adapter.getResourcePath(file.path);
+		}
+		return sourcePath.startsWith("http") ? sourcePath : "";
+	}
+
+	parseSection(section: string): CardData {
+		const lines = section.split("\n");
+		const result: CardData = {};
+		lines.forEach(line => {
+			const colonIndex = line.indexOf(":");
+			if (colonIndex !== -1) {
+				const key = line.substring(0, colonIndex).trim();
+				const value = line.substring(colonIndex + 1).trim();
+				if (key in { title: 1, desc: 1, icon: 1, picture: 1, action: 1 }) {
+					result[key as keyof CardData] = value;
+				}
 			}
 		});
-
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
-
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			new Notice("Click");
-		});
-
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
-
+		return result;
 	}
 
-	onunload() {
+	async handleAction(action: string) {
+		const [type, value] = action.split("|").map(s => s.trim());
+		if (!type || !value) return;
+
+		switch (type) {
+			case "url":
+				window.open(value.startsWith("http") ? value : `${value}`);
+				break;
+			case "open":// 파일 열기
+				await this.app.workspace.openLinkText(value, "", true);
+				break;
+
+			case "create":// 파일 생성 로직
+				this.createNewFileFromTemplate(value);
+				break;
+
+			default:
+				new Notice(`알 수 없는 액션 타입: ${type}`);
+		}
 	}
+
+	async createNewFileFromTemplate(templatePath: string) {
+		try {
+			const templateFile = this.app.metadataCache.getFirstLinkpathDest(templatePath, "");
+			let content = "";
+
+			if (templateFile instanceof TFile) {
+				content = await this.app.vault.read(templateFile);
+			} else {
+				new Notice(`템플릿을 찾을 수 없습니다: ${templatePath}`);
+				return; // 템플릿이 없으면 중단하거나 빈 파일 생성을 선택
+			}
+
+			const fileName = `무제 ${Date.now()}.md`;
+			const newFile = await this.app.vault.create(fileName, content);
+
+			await this.app.workspace.getLeaf(true).openFile(newFile);
+			new Notice("템플릿이 적용된 새 메모가 생성되었습니다.");
+
+		} catch (e: any) {
+			console.error("파일 생성 실패:", e);
+			if (e.message?.includes("already exists")) {
+				new Notice("이미 동일한 이름의 파일이 존재합니다.");
+			} else {
+				new Notice("파일 생성 중 오류가 발생했습니다.");
+			}
+		}
+	}
+
+	onunload() { }
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData() as Partial<MyPluginSettings>);
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
 	}
 
 	async saveSettings() {
 		await this.saveData(this.settings);
-	}
-}
-
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
-
-	onOpen() {
-		let {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
-
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
 	}
 }

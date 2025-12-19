@@ -1,8 +1,36 @@
-/*
+.card-buttons-container {
+    display: grid;
+    /* 카드가 3개면 3등분, 6개면 적절히 줄바꿈 */
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1.5rem;
+    margin: 1rem 0;
+}
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+.card-item {
+    display: flex;
+    flex-direction: column;
+    border-radius: 12px;
+    border: 1px solid var(--background-modifier-border);
+    background-color: var(--background-primary);
+    overflow: hidden;
+}
 
-If your plugin does not need CSS, delete this file.
+.card-img-container {
+    width: 100%;
+    height: 150px;
+    background-color: var(--background-secondary);
+}
 
-*/
+.card-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.card-content {
+    padding: 1rem;
+}
+
+.is-clickable {
+    cursor: pointer;
+}
