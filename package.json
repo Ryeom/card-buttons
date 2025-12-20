@@ -1,7 +1,7 @@
 {
-	"name": "obsidian-sample-plugin",
+	"name": "with-buttons",
 	"version": "1.0.0",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"description": "This plug-in changes the code area to a button.",
 	"main": "main.js",
 	"type": "module",
 	"scripts": {

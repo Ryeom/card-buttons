@@ -1,11 +1,11 @@
 {
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
+	"id": "with-buttons",
+	"name": "With Buttons",
 	"version": "1.0.0",
 	"minAppVersion": "0.15.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
+	"description": "This plug-in changes the code area to a button.",
+	"author": "Ryeom",
+	"authorUrl": "https://github.com/Ryeom",
 	"fundingUrl": "https://obsidian.md/pricing",
 	"isDesktopOnly": false
 }
