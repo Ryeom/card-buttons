@@ -1,40 +1,49 @@
-/* styles.css */
+/* 1. 카드 대시보드 컨테이너 */
 .card-buttons-container {
     display: grid;
     gap: 0.8em;
     width: 100%;
-    margin: 1.5rem 0;
+    /* 위아래 패딩으로 호버 시 솟아오를 공간 확보 및 잘림 방지 */
+    padding: 15px 5px;
+    margin: 0.5rem 0;
+    /* 가로 스크롤은 허용하되 세로 방향은 호버 요소가 보일 수 있도록 설정 */
+    overflow-x: auto;
+    overflow-y: visible;
+    scrollbar-width: thin;
 }
 
+/* 2. 개별 카드 아이템 기본 스타일 */
 .card-item {
     display: flex;
     flex-direction: column;
     aspect-ratio: 5 / 4;
     border: 1px solid var(--background-modifier-border);
-    border-radius: 5px;
+    border-radius: 8px;
+    /* 내부 콘텐츠(이미지) 잘림 방지, 단 호버 효과를 위해 상위 overflow는 visible이어야 함 */
     overflow: hidden;
     background-color: var(--background-primary);
-    transition: transform 0.2s, box-shadow 0.2s;
-
-
+    transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+    position: relative;
+    box-sizing: border-box;
 }
 
-.card-item:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+.card-item.is-clickable {
+    cursor: pointer;
+}
+
+/* 호버 시 솟아오르는 효과 강화 */
+.card-item.is-clickable:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
     border-color: var(--interactive-accent);
 }
 
+/* 3. 이미지 영역 (60% 차지) */
 .card-img-container {
     height: 60%;
-    /* 이미지 영역 60% 차지 */
     background-color: var(--background-secondary);
     overflow: hidden;
-
-    /* margin-left: 10px;
-    margin-top: 10px;
-    margin-right: 10px;
-    border-radius: 6px; */
+    flex-shrink: 0;
 }
 
 .card-img {
@@ -43,147 +52,72 @@
     object-fit: cover;
 }
 
-.card-info {
-    padding: 6px 8px;
-    overflow: hidden;
-    background-color: var(--background-primary);
-    border-top: 1px solid var(--background-modifier-border);
-    flex-grow: 1;
-    /* 남은 영역을 차지하도록 설정 */
-}
-
-.card-title {
-    font-weight: 700;
-    color: var(--text-normal);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    /* 파란색 영역을 핏하게 만들기 위해 block-size 조절 */
-    display: block;
-    min-height: 1.2em;
-    /**/
-    text-align: left;
-    font-weight: 700;
-    font-size: 1rem;
-    margin-bottom: 4px;
-    color: var(--text-normal);
-    /* font-family: 'SeoulNotice';
-    src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/2505-1@1.0/SeoulAlrimTTF-Medium.woff2') format('woff2');
-    font-weight: 800;
-    font-display: swap; */
-    white-space: nowrap;
-    /* 한 줄 고정 */
-    overflow: hidden;
-    /* 넘치는 글자 숨김 */
-    text-overflow: ellipsis;
-    font-weight: bold;
-    margin: 0 !important;
-}
-
-.card-desc {
-    font-size: 0.8rem;
-    color: var(--text-muted);
-    line-height: 1.3;
-    /* 여러 줄 생략 처리 (최대 2줄) */
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    /* 옵시디언 기본 p 태그 마진 강제 제거 */
-    margin-block-start: 0px !important;
-    margin-block-end: 0px !important;
-    margin: 0px !important;
-
-    /* font-family: 'ReperipointOblique';
-    src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2201-2@1.0/LeferiPoint-WhiteObliqueA.woff') format('woff');
-    font-weight: 500;
-    font-display: swap; */
-
-    color: var(--text-muted) !important;
-    font-size: 0.8em;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    /* 두 줄까지 허용 */
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-    /* 옵시디언 기본 마진 완전 박멸 */
-    margin-block-start: 0 !important;
-    margin-block-end: 0 !important;
-    margin: 0 !important;
-}
-
-/* 추가 팁: 카드 내부의 p 태그 간격 조정 */
-.card-info p {
-    margin: 0 !important;
-    padding: 0 !important;
-}
-
-/* 이미지만 있는 경우 컨테이너를 카드 전체 크기로 확장 */
+/* 사진만 보이는 모드 (|only) */
 .card-img-container.is-only-image {
     height: 100%;
-    border-radius: 8px;
-    /* 카드 모서리에 맞춤 */
 }
 
-.card-img-container.is-only-image .card-img {
-    height: 100%;
-    object-fit: cover;
-}
-
-/* 호버 시 이미지만 있는 카드는 더 강조될 수 있도록 설정 */
-.card-item.is-clickable:hover .card-img-container.is-only-image {
+.card-item.is-clickable:hover .is-only-image .card-img {
     filter: brightness(0.85);
-    transition: filter 0.2s ease;
 }
 
-/* 이미지만 있는 경우 */
-.card-img-container.only-img {
-    height: 100%;
-    /* 카드 높이 전체 점유 */
-    border-radius: 8px;
-    /* 카드 모서리에 맞춤 */
+/* 4. 정보 영역 (텍스트) */
+.card-info {
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    flex-grow: 1;
+    overflow: hidden;
+    background-color: inherit;
 }
 
-.card-img-container.only-img .card-img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    /* 찌그러짐 방지 */
+/* 제목 스타일 (왼쪽 정렬 및 핏 조절) */
+.card-title {
+    font-weight: 700;
+    font-size: 1rem;
+    color: var(--text-normal);
+    line-height: 1.2;
+    margin-bottom: 4px;
+    text-align: left;
+    /* 왼쪽 정렬 명시 */
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: block;
 }
 
-/**/
+/* 설명 스타일 (마진 제거 및 2줄 제한) */
+.card-desc {
+    font-size: 0.85em;
+    color: var(--text-muted);
+    line-height: 1.3;
+    margin: 0;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
 
-/* 인라인 버튼 기본 스타일 */
+/* 5. 인라인 액션 버튼 (본문용) */
 .inline-card-button {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    padding: 2px 6px;
+    padding: 2px 8px;
     margin: 0 2px;
     border-radius: 4px;
     background-color: var(--background-secondary);
-    /* 지정 안 했을 때 기본색 */
     border: 1px solid var(--background-modifier-border);
     cursor: pointer;
-    transition: filter 0.2s ease, background-color 0.2s ease;
-    /* 부드러운 전환 */
+    transition: filter 0.2s ease;
     vertical-align: middle;
 }
 
-/* 호버 시 효과: 크기는 그대로, 밝기만 살짝 조절 */
 .inline-card-button:hover {
-    /*어둡게*/
-    filter: brightness(0.8);
-    /* 밝게*/
-    /* filter: brightness(1.2); */
-}
-
-/* 클릭했을 때 살짝 더 어둡게 (피드백 강화) */
-.inline-card-button:active {
     filter: brightness(0.8);
 }
 
-/* 아이콘과 텍스트 정렬 */
 .inline-button-icon {
     display: flex;
     align-items: center;
@@ -194,4 +128,9 @@
 .inline-button-text {
     font-size: 0.9em;
     font-weight: 500;
+}
+
+/* 6. 편집 모드 전용 (Live Preview) */
+.cm-embed-block:has(.card-buttons-container) {
+    max-width: 100%;
 }

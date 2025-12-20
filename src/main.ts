@@ -37,36 +37,75 @@ export default class MyPlugin extends Plugin {
 			const settingSource = firstPart.includes("[setting]") ? firstPart.replace("[setting]", "").trim() : "";
 			const cardSections = parts.slice(1).map(s => s.trim()).filter(s => s !== "");
 
-			// [수정] 기본값(Default)을 명시적으로 설정
 			let localRatio = "1 / 1";
-			let titleSize = "14px"; // 제목 기본 크기
-			let descSize = "11px";  // 설명 기본 크기
+			let titleSize = "14px";
+			let descSize = "11px";
+			let styleId = "";
 
 			if (settingSource) {
 				settingSource.split("\n").forEach(line => {
-					if (!line.includes("|") && !line.includes(":")) return;
-					const segments = line.split(line.includes("|") ? "|" : ":").map(s => s.trim());
+					const separator = line.includes("|") ? "|" : ":";
+					if (!line.includes(separator)) return;
+					const segments = line.split(separator).map(s => s.trim());
 
 					if (segments.length >= 2) {
 						const key = segments[0]?.toLowerCase();
 						const value = segments[1] || "";
 
 						if (key === "ratio") localRatio = value.replace(/\s/g, "").replace(":", " / ");
-						// 설정값이 있을 때만 덮어쓰기
 						if (key === "title-size" && value) titleSize = value.endsWith("px") ? value : `${value}px`;
 						if (key === "desc-size" && value) descSize = value.endsWith("px") ? value : `${value}px`;
+						if (key === "style") styleId = value;
 					}
 				});
 			}
 
 			const container = el.createEl("div", { cls: "card-buttons-container" });
+
+			// [핵심] 스타일 강제 집행 로직 (속성 선택자 + 자동 !important)
+			if (styleId) {
+				const ids = styleId.split(/\s+/);
+				ids.forEach(id => {
+					const fullCSS = this.settings.customStyles[id];
+					if (fullCSS) {
+						const scopeAttr = `data-style-${id}`;
+						container.setAttribute(scopeAttr, "");
+
+						let styleTag = document.getElementById(`style-tag-${id}`) as HTMLStyleElement;
+						if (!styleTag) {
+							styleTag = document.createElement("style");
+							styleTag.id = `style-tag-${id}`;
+							document.head.appendChild(styleTag);
+						}
+
+						// 1. 모든 CSS 속성에 !important 자동 부여
+						const importantCSS = fullCSS.replace(/([^;{}]+:[^;{}]+)(?=[;}]|$)/g, (match) => {
+							if (match.includes('!important') || match.trim().startsWith('/*')) {
+								return match;
+							}
+							return `${match.trim()} !important`;
+						});
+
+						// 2. 선택자 앞에 [data-style-id]를 붙여 우선순위 격상
+						const scopedCSS = importantCSS.replace(/([^\r\n,{}]+)(?=[^{]*\{)/g, (match) => {
+							return match.split(',').map(s => `[${scopeAttr}] ${s.trim()}`).join(', ');
+						});
+
+						styleTag.textContent = scopedCSS;
+					}
+				});
+			}
+
 			container.style.gridTemplateColumns = `repeat(${cardSections.length || 1}, 1fr)`;
 
-			// card-buttons 프로세서 내부 수정본
 			cardSections.forEach((section) => {
 				const data = this.parseSection(section);
 				const cardEl = container.createEl("div", { cls: "card-item" });
 				cardEl.style.setProperty("aspect-ratio", localRatio, "important");
+
+				// [개선] 솟아오르는 느낌을 위한 z-index 제어
+				cardEl.addEventListener('mouseenter', () => { cardEl.style.zIndex = "100"; });
+				cardEl.addEventListener('mouseleave', () => { cardEl.style.zIndex = "1"; });
 
 				const rawPic = data.picture || "";
 				const isOnlyImage = rawPic.includes("|only");
@@ -83,23 +122,22 @@ export default class MyPlugin extends Plugin {
 				}
 
 				if (!isOnlyImage) {
-					// [핵심 보정] infoEl의 레이아웃을 강제하여 겹침 방지
 					const infoEl = cardEl.createEl("div", { cls: "card-info" });
 					infoEl.style.display = "flex";
 					infoEl.style.flexDirection = "column";
-					infoEl.style.justifyContent = "flex-start"; // 위에서부터 정렬
+					infoEl.style.justifyContent = "flex-start";
 
 					if (data.title) {
 						const tEl = infoEl.createEl("div", { text: data.title, cls: "card-title" });
-						tEl.style.fontSize = titleSize || "14px";
-						tEl.style.lineHeight = "1.2"; // 파란색 영역 핏하게 조절
+						tEl.style.fontSize = titleSize;
+						tEl.style.lineHeight = "1.2";
 						tEl.style.marginBottom = "2px";
 					}
 					if (data.desc) {
 						const dEl = infoEl.createEl("p", { text: data.desc, cls: "card-desc" });
-						dEl.style.fontSize = descSize || "11px";
+						dEl.style.fontSize = descSize;
 						dEl.style.lineHeight = "1.2";
-						dEl.style.margin = "0"; // 옵시디언 기본 p 마진 제거
+						dEl.style.margin = "0";
 					}
 				}
 
@@ -148,7 +186,6 @@ export default class MyPlugin extends Plugin {
 		const parts = actionString.split("|").map(s => s.trim());
 		const type = parts[0];
 		let value = parts[2] || parts[1];
-
 		if (!type || !value) return;
 
 		switch (type) {
