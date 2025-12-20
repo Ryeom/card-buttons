@@ -11,7 +11,6 @@ import { DEFAULT_SETTINGS, MyPluginSettings, SampleSettingTab } from "./settings
 interface CardData {
 	title?: string;
 	desc?: string;
-	icon?: string;
 	picture?: string;
 	action?: string;
 }
@@ -21,11 +20,7 @@ export default class MyPlugin extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
-
-		// [1] 편집 모드(Live Preview) 확장 등록
 		this.registerEditorExtension(this.buildLivePreviewPlugin());
-
-		// [2] 읽기 모드 프로세서 등록
 		this.registerMarkdownPostProcessor((el, ctx) => {
 			const codes = el.querySelectorAll("code");
 			codes.forEach((codeEl) => {
@@ -36,43 +31,63 @@ export default class MyPlugin extends Plugin {
 			});
 		});
 
-		// [3] 카드 대시보드 프로세서 (코드 블록)
 		this.registerMarkdownCodeBlockProcessor("card-buttons", (source, el, ctx) => {
 			const parts = source.split("[card]");
+			const firstPart = parts[0] || "";
+			const settingSource = firstPart.includes("[setting]") ? firstPart.replace("[setting]", "").trim() : "";
 			const cardSections = parts.slice(1).map(s => s.trim()).filter(s => s !== "");
+			let localRatio = "1 / 1"; // 기본 1:1
+
+			if (settingSource) {
+				settingSource.split("\n").forEach(line => {
+					if (!line.includes("|")) return;
+					const segments = line.split("|").map(s => s.trim());
+					if (segments.length >= 2) {
+						const key = segments[0]?.toLowerCase();
+						const value = segments[1];
+						// Ratio 설정 반영
+						if (key === "ratio" && value) {
+							localRatio = value.replace(":", " / ");
+						}
+					}
+				});
+			}
+
 			const container = el.createEl("div", { cls: "card-buttons-container" });
-			container.style.gridTemplateColumns = `repeat(${cardSections.length || 1}, 1fr)`;
+			container.style.gridTemplateColumns = `repeat(${cardSections.length}, 1fr)`;
 
 			cardSections.forEach((section) => {
 				const data = this.parseSection(section);
 				const cardEl = container.createEl("div", { cls: "card-item" });
+
+				cardEl.style.setProperty("aspect-ratio", localRatio, "important");
+
 				if (data.picture) {
-					const resolvedPath = this.resolveImagePath(data.picture);
-					if (resolvedPath) {
-						const imgContainer = cardEl.createEl("div", { cls: "card-img-container" });
-						imgContainer.createEl("img", { attr: { src: resolvedPath }, cls: "card-img" });
+					const res = this.resolveImagePath(data.picture);
+					if (res) {
+						const imgDiv = cardEl.createEl("div", { cls: "card-img-container" });
+						imgDiv.createEl("img", { attr: { src: res }, cls: "card-img" });
 					}
 				}
-				const infoEl = cardEl.createEl("div", { cls: "card-info" });
-				if (data.title) infoEl.createEl("div", { text: data.title, cls: "card-title" });
+				if (data.title) {
+					const infoEl = cardEl.createEl("div", { cls: "card-info" });
+					infoEl.createEl("div", { text: data.title, cls: "card-title" });
+				}
 				if (data.action) {
 					cardEl.addClass("is-clickable");
 					cardEl.onClickEvent(() => this.handleAction(data.action!));
 				}
 			});
 		});
-
 		this.addSettingTab(new SampleSettingTab(this.app, this));
 	}
 
-	// --- 편집 모드(Live Preview) 핵심 보정 로직 ---
 	buildLivePreviewPlugin() {
 		const plugin = this;
 		return ViewPlugin.fromClass(class {
 			decorations: DecorationSet;
 			constructor(view: EditorView) { this.decorations = this.buildDecorations(view); }
 			update(update: ViewUpdate) {
-				// 문서가 변하거나, 커서(selection)가 이동할 때마다 업데이트
 				if (update.docChanged || update.viewportChanged || update.selectionSet) {
 					this.decorations = this.buildDecorations(update.view);
 				}
@@ -81,28 +96,16 @@ export default class MyPlugin extends Plugin {
 				const decorations: any[] = [];
 				const regex = /`\[!(.*?)!\]`/g;
 				const text = view.state.doc.toString();
-
-				// 현재 커서의 위치(들)를 가져옵니다.
 				const selection = view.state.selection.main;
-
 				let match;
 				while ((match = regex.exec(text)) !== null) {
 					const start = match.index;
 					const end = start + match[0].length;
-					const content = match[1];
-
-					if (content) {
-						// 중요: 커서(selection)가 해당 문구 범위(start ~ end) 안에 있는지 확인
-						const isCursorInside = selection.from >= start && selection.to <= end;
-
-						if (!isCursorInside) {
-							// 커서가 밖에 있을 때만 버튼으로 대체(replace)
-							decorations.push(Decoration.replace({
-								widget: new InlineButtonWidget(content, plugin),
-							}).range(start, end));
-						} else {
-							// 커서가 안에 있으면 아무 Decoration도 입히지 않음 (원본 텍스트 노출)
-						}
+					if (selection.from >= start && selection.to <= end) continue;
+					if (match[1]) {
+						decorations.push(Decoration.replace({
+							widget: new InlineButtonWidget(match[1], plugin),
+						}).range(start, end));
 					}
 				}
 				return Decoration.set(decorations, true);
@@ -110,65 +113,121 @@ export default class MyPlugin extends Plugin {
 		}, { decorations: v => v.decorations });
 	}
 
-	async handleAction(action: string) {
-		const parts = action.split("|").map(s => s.trim());
-		if (parts.length < 2) return;
-		const [type, value] = parts;
+	async handleAction(actionString: string) {
+		// [수정] 5단 분리 문법이든 기존 2단 문법이든 대응할 수 있도록 처리
+		const parts = actionString.split("|").map(s => s.trim());
+		const type = parts[0];
+
+		// 5단 분리 문법([!type|label|value!])이면 Index 2가 진짜 실행값, 
+		// 2단 분법([!type|value!])이면 Index 1이 실행값입니다.
+		let value = parts[1];
+		if (parts.length >= 3 && parts[2]) {
+			value = parts[2];
+		}
+
 		if (!type || !value) return;
 
 		switch (type) {
-			case "command": // @ts-ignore
-				this.app.commands.executeCommandById(value); break;
 			case "copy":
 				await navigator.clipboard.writeText(value);
-				new Notice("클립보드에 복사되었습니다!"); break;
+				new Notice(`복사되었습니다: ${value}`);
+				break;
+			case "command":
+				// @ts-ignore
+				this.app.commands.executeCommandById(value);
+				break;
 			case "url":
-				window.open(value.startsWith("http") ? value : `https://${value}`); break;
+				window.open(value.startsWith("http") ? value : `https://${value}`);
+				break;
 			case "open":
-				await this.app.workspace.openLinkText(value, "", true); break;
+				await this.app.workspace.openLinkText(value, "", true);
+				break;
+			case "search":
+				const searchPlugin = (this.app as any).internalPlugins.getPluginById("global-search");
+				if (searchPlugin) searchPlugin.instance.openGlobalSearch(value);
+				else new Notice("검색 플러그인 비활성 상태");
+				break;
+			case "create":
+				this.createNewFileFromTemplate(value);
+				break;
+			case "js":
+				try {
+					new Function('app', 'Notice', value)(this.app, Notice);
+				} catch (e) {
+					new Notice("JS 실행 오류");
+				}
+				break;
 			default:
-				new Notice(`액션: ${type} | ${value}`);
+				new Notice(`알 수 없는 액션: ${type}`);
 		}
 	}
 
-	resolveImagePath(sourcePath: string): string {
-		const file = this.app.metadataCache.getFirstLinkpathDest(sourcePath, "");
-		if (file instanceof TFile) return this.app.vault.adapter.getResourcePath(file.path);
-		return sourcePath.startsWith("http") ? sourcePath : "";
+	async createNewFileFromTemplate(tPath: string) {
+		try {
+			const tFile = this.app.metadataCache.getFirstLinkpathDest(tPath, "");
+			const content = tFile instanceof TFile ? await this.app.vault.read(tFile) : "";
+			const fName = `New_${Date.now()}.md`;
+			const nFile = await this.app.vault.create(fName, content);
+			if (nFile) await this.app.workspace.getLeaf(true).openFile(nFile);
+		} catch (e) { new Notice("파일 생성 중 오류 발생"); }
 	}
 
-	parseSection(section: string): CardData {
-		const result: CardData = {};
-		section.split("\n").forEach(line => {
-			const splitIdx = line.indexOf(":");
-			if (splitIdx !== -1) {
-				const key = line.substring(0, splitIdx).trim();
-				const value = line.substring(splitIdx + 1).trim();
-				const valid: (keyof CardData)[] = ['title', 'desc', 'picture', 'action'];
-				if (valid.includes(key as keyof CardData)) result[key as keyof CardData] = value;
-			}
+	resolveImagePath(p: string) {
+		const f = this.app.metadataCache.getFirstLinkpathDest(p, "");
+		return f instanceof TFile ? this.app.vault.adapter.getResourcePath(f.path) : (p.startsWith("http") ? p : "");
+	}
+
+	parseSection(s: string) {
+		const r: any = {};
+		s.split("\n").forEach(l => {
+			const i = l.indexOf(":");
+			if (i !== -1) r[l.substring(0, i).trim()] = l.substring(i + 1).trim();
 		});
-		return result;
+		return r as CardData;
 	}
 
-	loadSettings() { return this.loadData().then(data => this.settings = Object.assign({}, DEFAULT_SETTINGS, data)); }
-	saveSettings() { return this.saveData(this.settings); }
+	async loadSettings() { this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData()); }
+	async saveSettings() { await this.saveData(this.settings); }
+}
+
+function renderInlineButton(el: HTMLElement, content: string, plugin: MyPlugin) {
+	const parts = content.split("|").map(p => p.trim());
+	const type = parts[0] || "";
+	const label = parts[1] || "";
+	const value = parts[2] || ""; // 5단 분리 시 실행값
+	const iconColor = parts[3];
+	const bgColor = parts[4];
+
+	el.addClass("inline-card-button");
+	if (bgColor) el.style.backgroundColor = bgColor;
+
+	const iconMap: Record<string, string> = { copy: "copy", command: "terminal", url: "external-link", open: "file-text", search: "search", create: "plus-square", js: "code-2" };
+	const iconId = type.includes("-") || type.length > 10 ? type : (iconMap[type] || type || "square-asterisk");
+
+	const iconSpan = el.createEl("span", { cls: "inline-button-icon" });
+	setIcon(iconSpan, iconId);
+
+	// 표시 텍스트 결정: label이 있으면 label, 없으면 value(Index 2), 그것도 없으면 parts[1]
+	const displayText = label || value || parts[1] || "";
+	const textSpan = el.createEl("span", { text: displayText, cls: "inline-button-text" });
+
+	if (iconColor) {
+		iconSpan.style.color = iconColor;
+		textSpan.style.color = iconColor;
+	}
+
+	el.onclick = (e) => {
+		e.preventDefault(); e.stopPropagation();
+		// content 전체를 넘겨서 handleAction 내부에서 판단하게 함
+		plugin.handleAction(content);
+	};
 }
 
 class InlineButtonWidget extends WidgetType {
 	constructor(readonly content: string, readonly plugin: MyPlugin) { super(); }
 	toDOM() {
-		const parts = this.content.split("|").map(p => p.trim());
-		const type = parts[0] || "link";
-		const value = parts[1] || "";
 		const span = document.createElement("span");
-		span.className = "inline-card-button";
-		const map: Record<string, string> = { copy: "copy", command: "terminal", url: "external-link", open: "file-text" };
-		const iconId = parts[2] || map[type] || "square-asterisk";
-		const iconSpan = span.createEl("span", { cls: "inline-button-icon" });
-		setIcon(iconSpan, iconId);
-		span.createEl("span", { text: value, cls: "inline-button-text" });
-		span.onclick = (e) => { e.preventDefault(); e.stopPropagation(); this.plugin.handleAction(`${type}|${value}`); };
+		renderInlineButton(span, this.content, this.plugin);
 		return span;
 	}
 }
@@ -179,15 +238,9 @@ class InlineButtonChild extends MarkdownRenderChild {
 		const rawText = this.containerEl.innerText.trim();
 		const match = rawText.match(/^\[!(.*)!\]$/);
 		if (match && match[1]) {
-			const parts = match[1].split("|").map(p => p.trim());
-			if (parts.length < 2) return;
 			this.containerEl.empty();
-			this.containerEl.addClass("inline-card-button");
 			this.containerEl.removeClass("cm-inline-code");
-			const iconId = parts[2] || ({ copy: "copy", command: "terminal", url: "external-link", open: "file-text" }[parts[0]!] || "square-asterisk");
-			setIcon(this.containerEl.createEl("span", { cls: "inline-button-icon" }), iconId);
-			this.containerEl.createEl("span", { text: parts[1], cls: "inline-button-text" });
-			this.containerEl.onclick = (e) => { e.preventDefault(); e.stopPropagation(); this.plugin.handleAction(`${parts[0]}|${parts[1]}`); };
+			renderInlineButton(this.containerEl, match[1], this.plugin);
 		}
 	}
 }
