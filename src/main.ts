@@ -36,7 +36,8 @@ export default class MyPlugin extends Plugin {
 			const firstPart = parts[0] || "";
 			const settingSource = firstPart.includes("[setting]") ? firstPart.replace("[setting]", "").trim() : "";
 			const cardSections = parts.slice(1).map(s => s.trim()).filter(s => s !== "");
-			let localRatio = "1 / 1"; // 기본 1:1
+
+			let localRatio = "1 / 1";
 
 			if (settingSource) {
 				settingSource.split("\n").forEach(line => {
@@ -45,34 +46,39 @@ export default class MyPlugin extends Plugin {
 					if (segments.length >= 2) {
 						const key = segments[0]?.toLowerCase();
 						const value = segments[1];
-						// Ratio 설정 반영
-						if (key === "ratio" && value) {
-							localRatio = value.replace(":", " / ");
-						}
+						if (key === "ratio" && value) localRatio = value.replace(/\s/g, "").replace(":", " / ");
 					}
 				});
 			}
 
 			const container = el.createEl("div", { cls: "card-buttons-container" });
-			container.style.gridTemplateColumns = `repeat(${cardSections.length}, 1fr)`;
+			container.style.gridTemplateColumns = `repeat(${cardSections.length || 1}, 1fr)`;
 
 			cardSections.forEach((section) => {
 				const data = this.parseSection(section);
 				const cardEl = container.createEl("div", { cls: "card-item" });
-
 				cardEl.style.setProperty("aspect-ratio", localRatio, "important");
 
-				if (data.picture) {
-					const res = this.resolveImagePath(data.picture);
+				const rawPic = data.picture || "";
+				const isOnlyImage = rawPic.includes("|only");
+				const picPath = isOnlyImage ? rawPic.split("|only")[0]?.trim() : rawPic.trim();
+
+				if (picPath) {
+					const res = this.resolveImagePath(picPath);
 					if (res) {
-						const imgDiv = cardEl.createEl("div", { cls: "card-img-container" });
+						const imgDiv = cardEl.createEl("div", {
+							cls: isOnlyImage ? "card-img-container is-only-image" : "card-img-container"
+						});
 						imgDiv.createEl("img", { attr: { src: res }, cls: "card-img" });
 					}
 				}
-				if (data.title) {
+
+				if (!isOnlyImage) {
 					const infoEl = cardEl.createEl("div", { cls: "card-info" });
-					infoEl.createEl("div", { text: data.title, cls: "card-title" });
+					if (data.title) infoEl.createEl("div", { text: data.title, cls: "card-title" });
+					if (data.desc) infoEl.createEl("p", { text: data.desc, cls: "card-desc" });
 				}
+
 				if (data.action) {
 					cardEl.addClass("is-clickable");
 					cardEl.onClickEvent(() => this.handleAction(data.action!));
@@ -102,9 +108,10 @@ export default class MyPlugin extends Plugin {
 					const start = match.index;
 					const end = start + match[0].length;
 					if (selection.from >= start && selection.to <= end) continue;
-					if (match[1]) {
+					const content = match[1];
+					if (content) {
 						decorations.push(Decoration.replace({
-							widget: new InlineButtonWidget(match[1], plugin),
+							widget: new InlineButtonWidget(content, plugin),
 						}).range(start, end));
 					}
 				}
@@ -114,16 +121,9 @@ export default class MyPlugin extends Plugin {
 	}
 
 	async handleAction(actionString: string) {
-		// [수정] 5단 분리 문법이든 기존 2단 문법이든 대응할 수 있도록 처리
 		const parts = actionString.split("|").map(s => s.trim());
 		const type = parts[0];
-
-		// 5단 분리 문법([!type|label|value!])이면 Index 2가 진짜 실행값, 
-		// 2단 분법([!type|value!])이면 Index 1이 실행값입니다.
-		let value = parts[1];
-		if (parts.length >= 3 && parts[2]) {
-			value = parts[2];
-		}
+		let value = parts[2] || parts[1];
 
 		if (!type || !value) return;
 
@@ -194,21 +194,23 @@ function renderInlineButton(el: HTMLElement, content: string, plugin: MyPlugin) 
 	const parts = content.split("|").map(p => p.trim());
 	const type = parts[0] || "";
 	const label = parts[1] || "";
-	const value = parts[2] || ""; // 5단 분리 시 실행값
+	const value = parts[2] || parts[1] || "";
 	const iconColor = parts[3];
 	const bgColor = parts[4];
 
 	el.addClass("inline-card-button");
 	if (bgColor) el.style.backgroundColor = bgColor;
 
-	const iconMap: Record<string, string> = { copy: "copy", command: "terminal", url: "external-link", open: "file-text", search: "search", create: "plus-square", js: "code-2" };
+	const iconMap: Record<string, string> = {
+		copy: "copy", command: "terminal", url: "external-link",
+		open: "file-text", search: "search", create: "plus-square", js: "code-2"
+	};
 	const iconId = type.includes("-") || type.length > 10 ? type : (iconMap[type] || type || "square-asterisk");
 
 	const iconSpan = el.createEl("span", { cls: "inline-button-icon" });
 	setIcon(iconSpan, iconId);
 
-	// 표시 텍스트 결정: label이 있으면 label, 없으면 value(Index 2), 그것도 없으면 parts[1]
-	const displayText = label || value || parts[1] || "";
+	const displayText = label || value;
 	const textSpan = el.createEl("span", { text: displayText, cls: "inline-button-text" });
 
 	if (iconColor) {
@@ -218,7 +220,6 @@ function renderInlineButton(el: HTMLElement, content: string, plugin: MyPlugin) 
 
 	el.onclick = (e) => {
 		e.preventDefault(); e.stopPropagation();
-		// content 전체를 넘겨서 handleAction 내부에서 판단하게 함
 		plugin.handleAction(content);
 	};
 }
