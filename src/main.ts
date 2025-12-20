@@ -213,9 +213,12 @@ export default class MyPlugin extends Plugin {
 				break;
 			case "js":
 				try {
-					new Function('app', 'Notice', value)(this.app, Notice);
+					const obsidian = require('obsidian');
+					new Function('app', 'Notice', 'obsidian', value)(this.app, Notice, obsidian);
 				} catch (e) {
-					new Notice("JS 실행 오류");
+					const errorMsg = e instanceof Error ? e.message : String(e);
+					new Notice("JS 실행 오류: " + errorMsg);
+					console.error(e);
 				}
 				break;
 			default:
