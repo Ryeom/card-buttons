@@ -1,4 +1,4 @@
-import { App, PluginSettingTab, Setting, Modal, TextAreaComponent } from "obsidian";
+import { App, PluginSettingTab, Setting, Modal, TextAreaComponent, Notice } from "obsidian";
 import MyPlugin from "./main";
 
 export interface MyPluginSettings {
@@ -20,8 +20,8 @@ class CSSEditModal extends Modal {
 
 	onOpen() {
 		const { contentEl } = this;
-		contentEl.createEl("h2", { text: "테마 스타일 편집" });
-		contentEl.createEl("p", { text: "내부 요소의 CSS를 자유롭게 수정할 수 있습니다." });
+		contentEl.createEl("h2", { text: "🎨 테마 스타일 편집" });
+		contentEl.createEl("p", { text: "내부 요소의 CSS를 수정하세요. (저장 시 즉시 반영됩니다)" });
 
 		const textArea = new TextAreaComponent(contentEl);
 		textArea.inputEl.style.width = "100%";
@@ -46,46 +46,72 @@ class CSSEditModal extends Modal {
 export class SampleSettingTab extends PluginSettingTab {
 	plugin: MyPlugin;
 
+	refreshMarkdownViews() {
+		this.app.workspace.iterateAllLeaves((leaf) => {
+			if (leaf.view.getViewType() === "markdown") {
+				(leaf.view as any).previewMode?.rerender(true);
+			}
+		});
+	}
+
 	display(): void {
 		const { containerEl } = this;
 		containerEl.empty();
-		containerEl.createEl('h2', { text: '커스텀 스타일 라이브러리' });
+		containerEl.createEl('h2', { text: '🎨 커스텀 스타일 라이브러리' });
 
 		new Setting(containerEl)
 			.setName('새 테마 추가')
 			.addButton(btn => btn
 				.setButtonText('+ 추가')
 				.setCta()
-				.onClick(async (e) => {
-					const newId = `theme_${Object.keys(this.plugin.settings.customStyles).length + 1}`;
-					this.plugin.settings.customStyles[newId] = defaultCss
-
+				.onClick(async () => {
+					const newId = `theme_${Date.now()}`;
+					this.plugin.settings.customStyles[newId] = defaultCss;
 					await this.plugin.saveSettings();
 					this.display();
 				}));
 
 		const styles = this.plugin.settings.customStyles;
-		Object.keys(styles).forEach((id) => {
+
+		// [수정] Object.entries를 사용하여 id와 content를 동시에 안전하게 가져옵니다.
+		Object.entries(styles).forEach(([id, initialContent]) => {
+			let tempId = id;
+
 			new Setting(containerEl)
 				.addText(text => text
-					.setPlaceholder('스타일 ID')
+					.setPlaceholder('스타일 ID 입력')
 					.setValue(id)
-					.onChange(async (newId: string) => {
-						const validatedId = (newId || "").trim();
-						if (validatedId && validatedId !== id) {
+					.onChange((val) => {
+						tempId = val.trim();
+					}))
+				.addButton(btn => btn
+					.setButtonText("ID 변경")
+					.setTooltip("ID를 확정 변경합니다.")
+					.onClick(async () => {
+						const finalId = (tempId || "").trim();
+						if (finalId && finalId !== id) {
 							const content = styles[id];
-							delete styles[id];
-							(this.plugin.settings.customStyles as any)[validatedId] = content;
-							await this.plugin.saveSettings();
+							if (content !== undefined) {
+								delete styles[id];
+								(this.plugin.settings.customStyles as any)[finalId] = content;
+								await this.plugin.saveSettings();
+								this.refreshMarkdownViews();
+								this.display();
+								new Notice(`ID가 '${finalId}'로 변경되었습니다.`);
+							}
 						}
 					}))
 				.addButton(btn => btn
 					.setButtonText("CSS 편집")
+					.setCta()
 					.onClick(() => {
-						const currentCSS = styles[id] || "";
+						// [에러 해결] styles[id]가 존재함을 보장하거나 기본값을 제공합니다.
+						const currentCSS = styles[id] ?? "";
 						new CSSEditModal(this.app, currentCSS, async (css) => {
 							styles[id] = css;
 							await this.plugin.saveSettings();
+							this.refreshMarkdownViews();
+							new Notice("스타일이 저장 및 반영되었습니다.");
 						}).open();
 					}))
 				.addButton(btn => btn
@@ -94,48 +120,26 @@ export class SampleSettingTab extends PluginSettingTab {
 					.onClick(async () => {
 						delete styles[id];
 						await this.plugin.saveSettings();
+						this.refreshMarkdownViews();
 						this.display();
 					}));
 		});
 	}
 }
 
-const defaultCss = `/* 1. [전체 컨테이너] 카드들의 배치와 간격을 조절합니다 */
-.card-buttons-container {
-    /* gap: 20px; -> 카드 사이의 간격을 넓힐 때 사용 */
-}
-
-/* 2. [카드 외곽] 카드의 배경, 테두리, 그림자를 결정합니다 */
-.card-item {
-    /* padding: 10px; -> 내부 여백을 주어 이미지를 띄울 때 유용 */
-}
-
-/* 3. [호버 액션] 마우스를 올렸을 때의 변화를 정의합니다 */
-.card-item:hover {
-    
-}
-
-/* 4. [이미지 박스] 이미지가 담긴 영역의 크기와 곡률을 조절합니다 */
-.card-img-container {
-    
-}
-
-/* 5. [정보 영역] 글자가 들어가는 하단 박스의 배경과 패딩을 조절합니다 */
-.card-info {
-    
-}
-
-/* 6. [제목] 글꼴 크기, 색상, 정렬을 담당합니다 */
-.card-title {
-    
-}
-
-/* 7. [설명] 부가 설명의 스타일을 정의합니다 */
-.card-desc {
-    
-}
-
-/* 8. [클릭 효과] 클릭하는 순간의 시각적 피드백을 줍니다 */
-.card-item:active {
-    
-}`
+const defaultCss = `/* 1. [전체 컨테이너] */
+.card-buttons-container { }
+/* 2. [카드 외곽] */
+.card-item { }
+/* 3. [호버 액션] */
+.card-item:hover { }
+/* 4. [이미지 박스] */
+.card-img-container { }
+/* 5. [정보 영역] */
+.card-info { }
+/* 6. [제목] */
+.card-title { }
+/* 7. [설명] */
+.card-desc { }
+/* 8. [클릭 효과] */
+.card-item:active { }`;
