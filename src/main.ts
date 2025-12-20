@@ -37,16 +37,24 @@ export default class MyPlugin extends Plugin {
 			const settingSource = firstPart.includes("[setting]") ? firstPart.replace("[setting]", "").trim() : "";
 			const cardSections = parts.slice(1).map(s => s.trim()).filter(s => s !== "");
 
+			// [수정] 기본값(Default)을 명시적으로 설정
 			let localRatio = "1 / 1";
+			let titleSize = "14px"; // 제목 기본 크기
+			let descSize = "11px";  // 설명 기본 크기
 
 			if (settingSource) {
 				settingSource.split("\n").forEach(line => {
-					if (!line.includes("|")) return;
-					const segments = line.split("|").map(s => s.trim());
+					if (!line.includes("|") && !line.includes(":")) return;
+					const segments = line.split(line.includes("|") ? "|" : ":").map(s => s.trim());
+
 					if (segments.length >= 2) {
 						const key = segments[0]?.toLowerCase();
-						const value = segments[1];
-						if (key === "ratio" && value) localRatio = value.replace(/\s/g, "").replace(":", " / ");
+						const value = segments[1] || "";
+
+						if (key === "ratio") localRatio = value.replace(/\s/g, "").replace(":", " / ");
+						// 설정값이 있을 때만 덮어쓰기
+						if (key === "title-size" && value) titleSize = value.endsWith("px") ? value : `${value}px`;
+						if (key === "desc-size" && value) descSize = value.endsWith("px") ? value : `${value}px`;
 					}
 				});
 			}
@@ -54,6 +62,7 @@ export default class MyPlugin extends Plugin {
 			const container = el.createEl("div", { cls: "card-buttons-container" });
 			container.style.gridTemplateColumns = `repeat(${cardSections.length || 1}, 1fr)`;
 
+			// card-buttons 프로세서 내부 수정본
 			cardSections.forEach((section) => {
 				const data = this.parseSection(section);
 				const cardEl = container.createEl("div", { cls: "card-item" });
@@ -74,9 +83,24 @@ export default class MyPlugin extends Plugin {
 				}
 
 				if (!isOnlyImage) {
+					// [핵심 보정] infoEl의 레이아웃을 강제하여 겹침 방지
 					const infoEl = cardEl.createEl("div", { cls: "card-info" });
-					if (data.title) infoEl.createEl("div", { text: data.title, cls: "card-title" });
-					if (data.desc) infoEl.createEl("p", { text: data.desc, cls: "card-desc" });
+					infoEl.style.display = "flex";
+					infoEl.style.flexDirection = "column";
+					infoEl.style.justifyContent = "flex-start"; // 위에서부터 정렬
+
+					if (data.title) {
+						const tEl = infoEl.createEl("div", { text: data.title, cls: "card-title" });
+						tEl.style.fontSize = titleSize || "14px";
+						tEl.style.lineHeight = "1.2"; // 파란색 영역 핏하게 조절
+						tEl.style.marginBottom = "2px";
+					}
+					if (data.desc) {
+						const dEl = infoEl.createEl("p", { text: data.desc, cls: "card-desc" });
+						dEl.style.fontSize = descSize || "11px";
+						dEl.style.lineHeight = "1.2";
+						dEl.style.margin = "0"; // 옵시디언 기본 p 마진 제거
+					}
 				}
 
 				if (data.action) {

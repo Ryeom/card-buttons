@@ -1,8 +1,7 @@
 /* styles.css */
 .card-buttons-container {
     display: grid;
-    gap: 16px;
-    /* 여백을 살짝 넓혀 더 고급스럽게 */
+    gap: 0.8em;
     width: 100%;
     margin: 1.5rem 0;
 }
@@ -11,13 +10,13 @@
     display: flex;
     flex-direction: column;
     aspect-ratio: 5 / 4;
-    /* 가로 5 : 세로 4 비율 (주인님이 선호하신 비율) */
     border: 1px solid var(--background-modifier-border);
-    border-radius: 10px;
-    /* 라운드 값을 조금 더 줌 */
+    border-radius: 5px;
     overflow: hidden;
     background-color: var(--background-primary);
     transition: transform 0.2s, box-shadow 0.2s;
+
+
 }
 
 .card-item:hover {
@@ -31,6 +30,11 @@
     /* 이미지 영역 60% 차지 */
     background-color: var(--background-secondary);
     overflow: hidden;
+
+    /* margin-left: 10px;
+    margin-top: 10px;
+    margin-right: 10px;
+    border-radius: 6px; */
 }
 
 .card-img {
@@ -40,19 +44,40 @@
 }
 
 .card-info {
-    padding: 10px;
-    height: 40%;
-    display: flex;
-    flex-direction: column;
-    justify-content: flex-start;
+    padding: 6px 8px;
+    overflow: hidden;
+    background-color: var(--background-primary);
+    border-top: 1px solid var(--background-modifier-border);
+    flex-grow: 1;
+    /* 남은 영역을 차지하도록 설정 */
 }
 
 .card-title {
+    font-weight: 700;
+    color: var(--text-normal);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    /* 파란색 영역을 핏하게 만들기 위해 block-size 조절 */
+    display: block;
+    min-height: 1.2em;
+    /**/
     text-align: left;
     font-weight: 700;
     font-size: 1rem;
     margin-bottom: 4px;
     color: var(--text-normal);
+    /* font-family: 'SeoulNotice';
+    src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/2505-1@1.0/SeoulAlrimTTF-Medium.woff2') format('woff2');
+    font-weight: 800;
+    font-display: swap; */
+    white-space: nowrap;
+    /* 한 줄 고정 */
+    overflow: hidden;
+    /* 넘치는 글자 숨김 */
+    text-overflow: ellipsis;
+    font-weight: bold;
+    margin: 0 !important;
 }
 
 .card-desc {
@@ -68,6 +93,23 @@
     margin-block-start: 0px !important;
     margin-block-end: 0px !important;
     margin: 0px !important;
+
+    /* font-family: 'ReperipointOblique';
+    src: url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2201-2@1.0/LeferiPoint-WhiteObliqueA.woff') format('woff');
+    font-weight: 500;
+    font-display: swap; */
+
+    color: var(--text-muted) !important;
+    font-size: 0.8em;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    /* 두 줄까지 허용 */
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    /* 옵시디언 기본 마진 완전 박멸 */
+    margin-block-start: 0 !important;
+    margin-block-end: 0 !important;
+    margin: 0 !important;
 }
 
 /* 추가 팁: 카드 내부의 p 태그 간격 조정 */
@@ -130,9 +172,10 @@
 
 /* 호버 시 효과: 크기는 그대로, 밝기만 살짝 조절 */
 .inline-card-button:hover {
-    filter: brightness(0.9);
-    /* 10% 어둡게 하여 '눌리는' 느낌 강조 */
-    /* 만약 밝아지는 게 좋으시다면 brightness(1.1)로 수정해 보세요! */
+    /*어둡게*/
+    filter: brightness(0.8);
+    /* 밝게*/
+    /* filter: brightness(1.2); */
 }
 
 /* 클릭했을 때 살짝 더 어둡게 (피드백 강화) */
