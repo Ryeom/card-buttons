@@ -184,3 +184,52 @@
 .cm-embed-block:has(.card-buttons-container) {
     max-width: 100%;
 }
+
+
+/* 모바일 최적화 (화면 너비 600px 이하) */
+@media screen and (max-width: 600px) {
+
+    /* 1. 카드를 세로로 길게 배치하는 대신 한 줄에 하나 혹은 둘만 나오게 조정 */
+    .card-buttons-container {
+        grid-template-columns: repeat(2, 1fr) !important;
+        gap: 8px !important;
+    }
+
+    .card-item {
+        aspect-ratio: 1 / 1 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+    }
+
+    /* 2. 이미지가 있는 경우: 이미지를 100% 채움 */
+    .card-img-container {
+        height: 100% !important;
+        width: 100% !important;
+    }
+
+    /* 3. 이미지가 있는 경우 정보창 숨기기 (이미지만 보이게) */
+    .card-img-container+.card-info {
+        display: none !important;
+    }
+
+    /* 4. 이미지가 없는 경우: 타이틀만 중앙에 크게 배치 */
+    .card-item:not(:has(.card-img-container)) .card-info {
+        height: 100% !important;
+        width: 100% !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        background: var(--background-secondary) !important;
+    }
+
+    .card-item:not(:has(.card-img-container)) .card-title {
+        font-size: 14px !important;
+        white-space: normal !important;
+        text-align: center !important;
+    }
+
+    /* 모바일에서 설명은 과감히 생략 */
+    .card-item:not(:has(.card-img-container)) .card-desc {
+        display: none !important;
+    }
+}
