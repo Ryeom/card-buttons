@@ -1,5 +1,6 @@
 import {
 	App, Plugin, TFile, Notice, setIcon,
+	Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo,
 	MarkdownPostProcessorContext, MarkdownRenderChild
 } from 'obsidian';
 import {
@@ -15,11 +16,61 @@ interface CardData {
 	action?: string;
 }
 
+class FileSuggest extends EditorSuggest<TFile> {
+	constructor(app: App) { super(app); }
+
+	onTrigger(cursor: EditorPosition, editor: Editor, file: TFile): EditorSuggestTriggerInfo | null {
+		const line = editor.getLine(cursor.line);
+		const sub = line.substring(0, cursor.ch);
+		const match = sub.match(/(open|create|picture)\s*[:|]\s*([^:|]*)$/);
+
+		// [수정] 타입스크립트 에러 방지를 위한 안전한 체크
+		if (match && match[2] !== undefined) {
+			return {
+				start: { line: cursor.line, ch: sub.lastIndexOf(match[2]) },
+				end: cursor,
+				query: match[2]
+			};
+		}
+		return null;
+	}
+
+	getSuggestions(context: EditorSuggestContext): TFile[] {
+		const query = context.query.toLowerCase();
+		const line = context.editor.getLine(context.start.line).substring(0, context.start.ch);
+
+		if (line.includes('picture')) {
+			return this.app.vault.getFiles().filter(f =>
+				['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(f.extension.toLowerCase()) &&
+				f.path.toLowerCase().includes(query)
+			);
+		}
+
+		return this.app.vault.getMarkdownFiles().filter(f =>
+			f.path.toLowerCase().includes(query)
+		);
+	}
+
+	renderSuggestion(file: TFile, el: HTMLElement): void {
+		const isImage = !['md'].includes(file.extension.toLowerCase());
+		el.createEl("div", { text: file.basename + (isImage ? `.${file.extension}` : ""), cls: "file-suggestion-title" });
+		el.createEl("small", { text: file.path, attr: { style: "display: block; font-size: 0.8em; opacity: 0.6;" } });
+	}
+
+	selectSuggestion(file: TFile, evt: MouseEvent | KeyboardEvent): void {
+		const context = this.context;
+		if (context) {
+			context.editor.replaceRange(file.path, context.start, context.end);
+		}
+	}
+}
+
 export default class MyPlugin extends Plugin {
 	settings: MyPluginSettings;
 
 	async onload() {
 		await this.loadSettings();
+		this.registerEditorSuggest(new FileSuggest(this.app));
 		this.registerEditorExtension(this.buildLivePreviewPlugin());
 		this.registerMarkdownPostProcessor((el, ctx) => {
 			const codes = el.querySelectorAll("code");
@@ -48,16 +99,14 @@ export default class MyPlugin extends Plugin {
 					const separator = line.includes("|") ? "|" : ":";
 					if (!line.includes(separator)) return;
 					const segments = line.split(separator).map(s => s.trim());
-
 					if (segments.length >= 2) {
 						const key = segments[0]?.toLowerCase();
 						const value = segments[1] || "";
-
 						if (key === "ratio") localRatio = value.replace(/\s/g, "").replace(":", " / ");
 						if (key === "title-size" && value) titleSize = value.endsWith("px") ? value : `${value}px`;
 						if (key === "desc-size" && value) descSize = value.endsWith("px") ? value : `${value}px`;
 						if (key === "style") styleId = value;
-						if (key === "img-ratio") imgRatio = value.replace("%", ""); // [추가] 내부 비율 파싱
+						if (key === "img-ratio") imgRatio = value.replace("%", "");
 					}
 				});
 			}
@@ -71,24 +120,17 @@ export default class MyPlugin extends Plugin {
 					if (fullCSS) {
 						const scopeAttr = `data-style-${id}`;
 						container.setAttribute(scopeAttr, "");
-
 						const oldStyleTag = document.head.querySelector(`#style-tag-${id}`);
 						if (oldStyleTag) oldStyleTag.remove();
-
-						// 2. 새 스타일 태그 생성
 						const styleTag = document.createElement("style");
 						styleTag.id = `style-tag-${id}`;
-
-						// 3. !important 및 스코핑 처리
 						const importantCSS = fullCSS.replace(/([^;{}]+:[^;{}]+)(?=[;}]|$)/g, (match) => {
 							if (match.includes('!important') || match.trim().startsWith('/*')) return match;
 							return `${match.trim()} !important`;
 						});
-
 						const scopedCSS = importantCSS.replace(/([^\r\n,{}]+)(?=[^{]*\{)/g, (match) => {
 							return match.split(',').map(s => `div[${scopeAttr}] ${s.trim()}`).join(', ');
 						});
-
 						styleTag.textContent = scopedCSS;
 						document.head.appendChild(styleTag);
 					}
@@ -101,10 +143,8 @@ export default class MyPlugin extends Plugin {
 				const data = this.parseSection(section);
 				const cardEl = container.createEl("div", { cls: "card-item" });
 				cardEl.style.setProperty("aspect-ratio", localRatio, "important");
-
 				cardEl.addEventListener('mouseenter', () => { cardEl.style.zIndex = "100"; });
 				cardEl.addEventListener('mouseleave', () => { cardEl.style.zIndex = "1"; });
-
 				const rawPic = data.picture || "";
 				const isOnlyImage = rawPic.includes("|only");
 				const picPath = isOnlyImage ? rawPic.split("|only")[0]?.trim() : rawPic.trim();
@@ -112,43 +152,27 @@ export default class MyPlugin extends Plugin {
 				if (picPath) {
 					const res = this.resolveImagePath(picPath);
 					if (res) {
-						const imgDiv = cardEl.createEl("div", {
-							cls: isOnlyImage ? "card-img-container is-only-image" : "card-img-container"
-						});
-
+						const imgDiv = cardEl.createEl("div", { cls: isOnlyImage ? "card-img-container is-only-image" : "card-img-container" });
 						imgDiv.style.height = isOnlyImage ? "100%" : `${imgRatio}%`;
-						imgDiv.style.position = "relative"; // 레이어 배치를 위한 기준점
-
+						imgDiv.style.position = "relative";
 						imgDiv.createEl("img", { attr: { src: res }, cls: "card-img" });
-
 						const overlay = imgDiv.createEl("div", { cls: "card-img-overlay" });
-						overlay.style.position = "absolute";
-						overlay.style.top = "0";
-						overlay.style.left = "0";
-						overlay.style.width = "100%";
-						overlay.style.height = "100%";
-						overlay.style.zIndex = "5"; // 이미지보다 위에 위치
+						overlay.style.position = "absolute"; overlay.style.top = "0"; overlay.style.left = "0";
+						overlay.style.width = "100%"; overlay.style.height = "100%"; overlay.style.zIndex = "5";
 					}
 				}
 
 				if (!isOnlyImage) {
 					const infoEl = cardEl.createEl("div", { cls: "card-info" });
 					infoEl.style.height = `${100 - parseInt(imgRatio)}%`;
-					infoEl.style.display = "flex";
-					infoEl.style.flexDirection = "column";
-					infoEl.style.justifyContent = "flex-start";
-
+					infoEl.style.display = "flex"; infoEl.style.flexDirection = "column"; infoEl.style.justifyContent = "flex-start";
 					if (data.title) {
 						const tEl = infoEl.createEl("div", { text: data.title, cls: "card-title" });
-						tEl.style.fontSize = titleSize;
-						tEl.style.lineHeight = "1.2";
-						tEl.style.marginBottom = "2px";
+						tEl.style.fontSize = titleSize; tEl.style.lineHeight = "1.2"; tEl.style.marginBottom = "2px";
 					}
 					if (data.desc) {
 						const dEl = infoEl.createEl("p", { text: data.desc, cls: "card-desc" });
-						dEl.style.fontSize = descSize;
-						dEl.style.lineHeight = "1.2";
-						dEl.style.margin = "0";
+						dEl.style.fontSize = descSize; dEl.style.lineHeight = "1.2"; dEl.style.margin = "0";
 					}
 				}
 
@@ -183,15 +207,14 @@ export default class MyPlugin extends Plugin {
 					if (selection.from >= start && selection.to <= end) continue;
 					const content = match[1];
 					if (content) {
-						decorations.push(Decoration.replace({
-							widget: new InlineButtonWidget(content, plugin),
-						}).range(start, end));
+						decorations.push(Decoration.replace({ widget: new InlineButtonWidget(content, plugin) }).range(start, end));
 					}
 				}
 				return Decoration.set(decorations, true);
 			}
 		}, { decorations: v => v.decorations });
 	}
+
 	async handleAction(actionString: string) {
 		const parts = actionString.split("|").map(s => s.trim());
 		const type = parts[0];
@@ -199,88 +222,64 @@ export default class MyPlugin extends Plugin {
 		let defaultValue = parts[2] || parts[1];
 		switch (type) {
 			case "url": {
-				// App Scheme 대응 (url | 데스크탑 | 모바일)
-				const desktopUrl = parts[1];
-				const mobileScheme = parts[2];
-
+				const desktopUrl = parts[1]; const mobileScheme = parts[2];
 				if (!desktopUrl) return;
-
 				const isMobileDevice = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 				const finalDesktopUrl = desktopUrl.startsWith("http") ? desktopUrl : `https://${desktopUrl}`;
-
 				if (isMobileDevice && mobileScheme) {
 					let appOpened = false;
-					const onVisibilityChange = () => {
-						if (document.visibilityState === "hidden") appOpened = true;
-					};
-
+					const onVisibilityChange = () => { if (document.visibilityState === "hidden") appOpened = true; };
 					document.addEventListener("visibilitychange", onVisibilityChange, { once: true });
 					window.location.href = mobileScheme;
-
 					setTimeout(() => {
 						document.removeEventListener("visibilitychange", onVisibilityChange);
 						if (!appOpened) window.open(finalDesktopUrl);
 					}, 500);
-				} else {
-					window.open(finalDesktopUrl);
-				}
+				} else { window.open(finalDesktopUrl); }
 				break;
 			}
-
-			case "copy":
-				if (!defaultValue) return;
-				await navigator.clipboard.writeText(defaultValue);
-				new Notice(`복사되었습니다: ${defaultValue}`);
-				break;
-
-			case "command":
-				if (!defaultValue) return;
-				// @ts-ignore
-				this.app.commands.executeCommandById(defaultValue);
-				break;
-
-			case "open":
-				if (!defaultValue) return;
-				await this.app.workspace.openLinkText(defaultValue, "", true);
-				break;
-
-			case "search":
-				if (!defaultValue) return;
+			case "copy": if (!defaultValue) return; await navigator.clipboard.writeText(defaultValue); new Notice(`복사되었습니다: ${defaultValue}`); break;
+			case "command": if (!defaultValue) return; // @ts-ignore
+				this.app.commands.executeCommandById(defaultValue); break;
+			case "open": if (!defaultValue) return; await this.app.workspace.openLinkText(defaultValue, "", true); break;
+			case "search": if (!defaultValue) return;
 				const searchPlugin = (this.app as any).internalPlugins.getPluginById("global-search");
 				if (searchPlugin) searchPlugin.instance.openGlobalSearch(defaultValue);
-				else new Notice("검색 플러그인 비활성 상태");
-				break;
-
-			case "create":
-				if (!defaultValue) return;
-				this.createNewFileFromTemplate(defaultValue);
-				break;
-
-			case "js":
-				// JS는 parts[2]가 있을 확률이 높으므로 defaultValue(parts[2] || parts[1]) 사용
-				if (!defaultValue) return;
+				else new Notice("검색 플러그인 비활성 상태"); break;
+			case "create": if (!defaultValue) return; this.createNewFileFromTemplate(defaultValue); break;
+			case "js": if (!defaultValue) return;
 				try {
 					const obsidian = require('obsidian');
 					new Function('app', 'Notice', 'obsidian', defaultValue)(this.app, Notice, obsidian);
-				} catch (e) {
-					const errorMsg = e instanceof Error ? e.message : String(e);
-					new Notice("JS 실행 오류: " + errorMsg);
-					console.error(e);
-				}
+				} catch (e) { new Notice("JS 실행 오류: " + (e instanceof Error ? e.message : String(e))); }
 				break;
-
-			default:
-				new Notice(`알 수 없는 액션: ${type}`);
+			default: new Notice(`알 수 없는 액션: ${type}`);
 		}
 	}
+
 	async createNewFileFromTemplate(tPath: string) {
 		try {
 			const tFile = this.app.metadataCache.getFirstLinkpathDest(tPath, "");
 			const content = tFile instanceof TFile ? await this.app.vault.read(tFile) : "";
-			const fName = `New_${Date.now()}.md`;
+
+			const now = new Date();
+			const dateStr = now.getFullYear() + '년 ' +
+				String(now.getMonth() + 1).padStart(2, '0') + '월 ' +
+				String(now.getDate()).padStart(2, '0') + '일';
+
+			// 콜론(:) 사용불가
+			const timeStr = String(now.getHours()).padStart(2, '0') + '시 ' +
+				String(now.getMinutes()).padStart(2, '0') + '분 ' +
+				String(now.getSeconds()).padStart(2, '0') + '초 생성';
+
+			const fName = `무제 ${dateStr} ${timeStr}.md`;
+
 			const nFile = await this.app.vault.create(fName, content);
 			if (nFile) await this.app.workspace.getLeaf(true).openFile(nFile);
-		} catch (e) { new Notice("파일 생성 중 오류 발생"); }
+		} catch (e) {
+			console.error(e);
+			new Notice("파일 생성 실패: 파일 이름에 금지된 문자(: / \\ 등)가 포함되었거나 중복되었습니다.");
+		}
 	}
 
 	resolveImagePath(p: string) {
@@ -306,42 +305,22 @@ function renderInlineButton(el: HTMLElement, content: string, plugin: MyPlugin) 
 	const type = parts[0] || "";
 	const label = parts[1] || "";
 	const value = parts[2] || parts[1] || "";
-	const iconColor = parts[3];
-	const bgColor = parts[4];
-
+	const iconColor = parts[3]; const bgColor = parts[4];
 	el.addClass("inline-card-button");
 	if (bgColor) el.style.backgroundColor = bgColor;
-
-	const iconMap: Record<string, string> = {
-		copy: "copy", command: "terminal", url: "external-link",
-		open: "file-text", search: "search", create: "plus-square", js: "code-2"
-	};
+	const iconMap: Record<string, string> = { copy: "copy", command: "terminal", url: "external-link", open: "file-text", search: "search", create: "plus-square", js: "code-2" };
 	const iconId = type.includes("-") || type.length > 10 ? type : (iconMap[type] || type || "square-asterisk");
-
 	const iconSpan = el.createEl("span", { cls: "inline-button-icon" });
 	setIcon(iconSpan, iconId);
-
 	const displayText = label || value;
 	const textSpan = el.createEl("span", { text: displayText, cls: "inline-button-text" });
-
-	if (iconColor) {
-		iconSpan.style.color = iconColor;
-		textSpan.style.color = iconColor;
-	}
-
-	el.onclick = (e) => {
-		e.preventDefault(); e.stopPropagation();
-		plugin.handleAction(content);
-	};
+	if (iconColor) { iconSpan.style.color = iconColor; textSpan.style.color = iconColor; }
+	el.onclick = (e) => { e.preventDefault(); e.stopPropagation(); plugin.handleAction(content); };
 }
 
 class InlineButtonWidget extends WidgetType {
 	constructor(readonly content: string, readonly plugin: MyPlugin) { super(); }
-	toDOM() {
-		const span = document.createElement("span");
-		renderInlineButton(span, this.content, this.plugin);
-		return span;
-	}
+	toDOM() { const span = document.createElement("span"); renderInlineButton(span, this.content, this.plugin); return span; }
 }
 
 class InlineButtonChild extends MarkdownRenderChild {
