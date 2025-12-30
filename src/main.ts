@@ -261,7 +261,6 @@ export default class MyPlugin extends Plugin {
 			default: new Notice(`알 수 없는 액션: ${type}`);
 		}
 	}
-
 	async createNewFileFromTemplate(tPath: string, rawArgs: string = "") {
 		try {
 			const tFile = this.app.metadataCache.getFirstLinkpathDest(tPath, "");
@@ -271,66 +270,75 @@ export default class MyPlugin extends Plugin {
 			}
 			let content = await this.app.vault.read(tFile as TFile);
 
+			let newProps: any = {};
 			if (rawArgs.trim().startsWith("{")) {
-				try {
-					const props = JSON.parse(rawArgs);
-					let yamlString = "";
-					for (const [key, value] of Object.entries(props)) {
-						if (Array.isArray(value)) {
-							yamlString += `${key}:\n${value.map(v => `  - ${v}`).join("\n")}\n`;
-						} else {
-							yamlString += `${key}: ${value}\n`;
-						}
-					}
-
-					if (content.startsWith("---")) {
-						const sections = content.split("---");
-						let oldYaml = sections[1] || "";
-				
-						if (props.tags) {
-							oldYaml = oldYaml.replace(/tags:[\s\S]*?(?=\n[^\s\-|#])|tags:[\s\S]*/, "").trim();
-						}
-						content = `---\n${oldYaml}\n${yamlString.trim()}\n---${sections.slice(2).join("---")}`;
-					} else {
-						content = `---\n${yamlString}---\n\n` + content;
-					}
-				} catch (e) {
-					new Notice("JSON 형식이 잘못되었습니다.");
-				}
+				try { newProps = JSON.parse(rawArgs); } catch (e) { new Notice("JSON 형식 오류"); }
 			} else if (rawArgs.trim().length > 0) {
-				const tags = rawArgs.split(",").map(t => t.trim());
-				const tagListString = tags.map(t => `  - ${t}`).join("\n") + "\n";
-				if (content.includes("tags:")) {
-					content = content.replace(/tags:[\s\S]*?(?=\n[^\s\-|#])|tags:[\s\S]*/, `tags:\n${tagListString.trimEnd()}`);
-				} else if (content.startsWith("---")) {
-					content = content.replace("---", `---\ntags:\n${tagListString.trimEnd()}`);
+				newProps = { tags: rawArgs.split(",").map(t => t.trim()) };
+			}
+
+			if (Object.keys(newProps).length > 0) {
+				if (content.startsWith("---")) {
+					const parts = content.split("---");
+					const yamlPart = parts[1]!;
+					if (parts.length >= 3) {
+						let yamlLines = yamlPart.split("\n").filter(line => line.trim() !== "");
+
+						for (const [key, value] of Object.entries(newProps)) {
+							const keyIndex = yamlLines.findIndex(line => line.trim().startsWith(`${key}:`));
+
+							if (keyIndex !== -1) {
+								if (Array.isArray(value)) {
+									const newItems = value.map(v => `  - ${v}`);
+									yamlLines.splice(keyIndex + 1, 0, ...newItems);
+								} else {
+									yamlLines[keyIndex] = `${key}: ${value}`;
+								}
+							} else {
+								if (Array.isArray(value)) {
+									yamlLines.push(`${key}:`);
+									yamlLines.push(...value.map(v => `  - ${v}`));
+								} else {
+									yamlLines.push(`${key}: ${value}`);
+								}
+							}
+						}
+						parts[1] = "\n" + yamlLines.join("\n") + "\n";
+						content = parts.join("---");
+					}
 				} else {
-					content = `---\ntags:\n${tagListString}---\n\n` + content;
+					let newYaml = "---\n";
+					for (const [key, value] of Object.entries(newProps)) {
+						if (Array.isArray(value)) {
+							newYaml += `${key}:\n${value.map(v => `  - ${v}`).join("\n")}\n`;
+						} else {
+							newYaml += `${key}: ${value}\n`;
+						}
+					}
+					content = newYaml + "---\n\n" + content;
 				}
 			}
 
 			const now = new Date();
 			const dateStr = `${now.getFullYear()}년 ${String(now.getMonth() + 1).padStart(2, '0')}월 ${String(now.getDate()).padStart(2, '0')}일`;
 			const timeStr = `${String(now.getHours()).padStart(2, '0')}시 ${String(now.getMinutes()).padStart(2, '0')}분 ${String(now.getSeconds()).padStart(2, '0')}초 생성`;
-
 			let baseFileName = `무제 ${dateStr} ${timeStr}`;
 			let finalPath = `${baseFileName}.md`;
 			let counter = 1;
 
 			while (await this.app.vault.adapter.exists(finalPath)) {
-				finalPath = `${baseFileName} (${counter}).md`;
+				finalPath = `무제 ${dateStr} ${timeStr} (${counter}).md`;
 				counter++;
 			}
 
 			const nFile = await this.app.vault.create(finalPath, content);
 			if (nFile) {
-				const leaf = this.app.workspace.getLeaf('tab');
-				await leaf.openFile(nFile);
-				new Notice("범용 속성 주입 완료");
+				await this.app.workspace.getLeaf('tab').openFile(nFile);
+				new Notice("병합 완료");
 			}
 		} catch (e) {
 			console.error(e);
-			new Notice("파일 생성 실패: 상세 내용은 콘솔 확인");
+			new Notice("생성 실패");
 		}
 	}
 
