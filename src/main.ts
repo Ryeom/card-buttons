@@ -9,6 +9,7 @@ import {
 } from "@codemirror/view";
 import { DEFAULT_SETTINGS, MyPluginSettings, SampleSettingTab } from "./settings";
 import FileSuggest from './file-suggest';
+import ActionSuggest from './action-suggest';
 
 interface CardData {
 	title?: string;
@@ -23,6 +24,8 @@ export default class MyPlugin extends Plugin {
 	async onload() {
 		await this.loadSettings();
 		this.registerEditorSuggest(new FileSuggest(this.app));
+		this.registerEditorSuggest(new ActionSuggest(this.app));
+
 		this.registerEditorExtension(this.buildLivePreviewPlugin());
 		this.registerMarkdownPostProcessor((el, ctx) => {
 			const codes = el.querySelectorAll("code");
@@ -55,8 +58,8 @@ export default class MyPlugin extends Plugin {
 						const key = segments[0]?.toLowerCase();
 						const value = segments[1] || "";
 						if (key === "ratio") localRatio = value.replace(/\s/g, "").replace(":", " / ");
-						if (key === "title-size" && value) titleSize = value.endsWith("px") ? value : `${value}px`;
-						if (key === "desc-size" && value) descSize = value.endsWith("px") ? value : `${value}px`;
+						if (key === "title-size") titleSize = value.endsWith("px") ? value : `${value}px`;
+						if (key === "desc-size") descSize = value.endsWith("px") ? value : `${value}px`;
 						if (key === "style") styleId = value;
 						if (key === "img-ratio") imgRatio = value.replace("%", "");
 					}
