@@ -15,7 +15,7 @@
 /* 2. 개별 카드 아이템 기본 스타일 */
 .card-item {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     aspect-ratio: 5 / 4;
     border: 1px solid var(--background-modifier-border);
     border-radius: 8px;
@@ -40,7 +40,9 @@
 
 /* 3. 이미지 영역 (60% 차지) */
 .card-img-container {
-    height: 60%;
+    width: 60%;
+    /* height 대신 width를 기본으로 사용 */
+    height: 100%;
     background-color: var(--background-secondary);
     overflow: hidden;
     flex-shrink: 0;
@@ -207,10 +209,10 @@
         width: 100% !important;
     }
 
-    /* 3. 이미지가 있는 경우 정보창 숨기기 (이미지만 보이게) */
+    /* 3. 이미지가 있는 경우 정보창 숨기기 (이미지만 보이게)
     .card-img-container+.card-info {
         display: none !important;
-    }
+    } */
 
     /* 4. 이미지가 없는 경우: 타이틀만 중앙에 크게 배치 */
     .card-item:not(:has(.card-img-container)) .card-info {

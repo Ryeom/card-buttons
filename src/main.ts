@@ -1,7 +1,7 @@
 import {
 	App, Plugin, TFile, Notice, setIcon,
-	Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo,
-	MarkdownPostProcessorContext, MarkdownRenderChild
+	Editor, EditorSuggest,
+	MarkdownRenderChild
 } from 'obsidian';
 import {
 	ViewUpdate, ViewPlugin, DecorationSet, Decoration,
@@ -27,6 +27,7 @@ export default class MyPlugin extends Plugin {
 		this.registerEditorSuggest(new ActionSuggest(this.app));
 
 		this.registerEditorExtension(this.buildLivePreviewPlugin());
+
 		this.registerMarkdownPostProcessor((el, ctx) => {
 			const codes = el.querySelectorAll("code");
 			codes.forEach((codeEl) => {
@@ -47,7 +48,8 @@ export default class MyPlugin extends Plugin {
 			let titleSize = "14px";
 			let descSize = "11px";
 			let styleId = "";
-			let imgRatio = "60";
+			let imgRatioStr = "60";
+			let direction = "vertical";
 
 			if (settingSource) {
 				settingSource.split("\n").forEach(line => {
@@ -61,10 +63,14 @@ export default class MyPlugin extends Plugin {
 						if (key === "title-size") titleSize = value.endsWith("px") ? value : `${value}px`;
 						if (key === "desc-size") descSize = value.endsWith("px") ? value : `${value}px`;
 						if (key === "style") styleId = value;
-						if (key === "img-ratio") imgRatio = value.replace("%", "");
+						if (key === "img-ratio") imgRatioStr = value.replace("%", "");
+						if (key === "direction") direction = value.toLowerCase();
 					}
 				});
 			}
+
+			const rawRatio = parseInt(imgRatioStr);
+			const imgRatio = isNaN(rawRatio) ? 60 : Math.min(Math.max(rawRatio, 0), 100);
 
 			const container = el.createEl("div", { cls: "card-buttons-container" });
 
@@ -75,31 +81,41 @@ export default class MyPlugin extends Plugin {
 					if (fullCSS) {
 						const scopeAttr = `data-style-${id}`;
 						container.setAttribute(scopeAttr, "");
-						const oldStyleTag = document.head.querySelector(`#style-tag-${id}`);
-						if (oldStyleTag) oldStyleTag.remove();
-						const styleTag = document.createElement("style");
-						styleTag.id = `style-tag-${id}`;
+						const oldTag = document.getElementById(`style-tag-${id}`);
+						if (oldTag) oldTag.remove();
+
+						const styleTag = document.head.createEl("style", { attr: { id: `style-tag-${id}` } });
+
+						// !important 자동 주입
 						const importantCSS = fullCSS.replace(/([^;{}]+:[^;{}]+)(?=[;}]|$)/g, (match) => {
 							if (match.includes('!important') || match.trim().startsWith('/*')) return match;
 							return `${match.trim()} !important`;
 						});
-						const scopedCSS = importantCSS.replace(/([^\r\n,{}]+)(?=[^{]*\{)/g, (match) => {
+
+						styleTag.textContent = importantCSS.replace(/([^\r\n,{}]+)(?=[^{]*\{)/g, (match) => {
 							return match.split(',').map(s => `div[${scopeAttr}] ${s.trim()}`).join(', ');
 						});
-						styleTag.textContent = scopedCSS;
-						document.head.appendChild(styleTag);
 					}
 				});
 			}
 
+			container.style.display = "grid";
 			container.style.gridTemplateColumns = `repeat(${cardSections.length || 1}, 1fr)`;
+			container.style.gap = "10px";
 
 			cardSections.forEach((section) => {
 				const data = this.parseSection(section);
 				const cardEl = container.createEl("div", { cls: "card-item" });
+
+				const isVertical = direction === "vertical";
+				cardEl.style.display = "flex";
+				cardEl.style.flexDirection = isVertical ? "column" : "row";
 				cardEl.style.setProperty("aspect-ratio", localRatio, "important");
+				cardEl.style.overflow = "hidden";
+
 				cardEl.addEventListener('mouseenter', () => { cardEl.style.zIndex = "100"; });
 				cardEl.addEventListener('mouseleave', () => { cardEl.style.zIndex = "1"; });
+
 				const rawPic = data.picture || "";
 				const isOnlyImage = rawPic.includes("|only");
 				const picPath = isOnlyImage ? rawPic.split("|only")[0]?.trim() : rawPic.trim();
@@ -108,19 +124,37 @@ export default class MyPlugin extends Plugin {
 					const res = this.resolveImagePath(picPath);
 					if (res) {
 						const imgDiv = cardEl.createEl("div", { cls: isOnlyImage ? "card-img-container is-only-image" : "card-img-container" });
-						imgDiv.style.height = isOnlyImage ? "100%" : `${imgRatio}%`;
+						imgDiv.style.flexShrink = "0";
+
+						if (isVertical) {
+							imgDiv.style.width = "100%";
+							imgDiv.style.height = isOnlyImage ? "100%" : `${imgRatio}%`;
+						} else {
+							imgDiv.style.width = isOnlyImage ? "100%" : `${imgRatio}%`;
+							imgDiv.style.height = "100%";
+						}
+
 						imgDiv.style.position = "relative";
 						imgDiv.createEl("img", { attr: { src: res }, cls: "card-img" });
 						const overlay = imgDiv.createEl("div", { cls: "card-img-overlay" });
-						overlay.style.position = "absolute"; overlay.style.top = "0"; overlay.style.left = "0";
-						overlay.style.width = "100%"; overlay.style.height = "100%"; overlay.style.zIndex = "5";
+						overlay.style.cssText = "position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5;";
 					}
 				}
 
 				if (!isOnlyImage) {
 					const infoEl = cardEl.createEl("div", { cls: "card-info" });
-					infoEl.style.height = `${100 - parseInt(imgRatio)}%`;
-					infoEl.style.display = "flex"; infoEl.style.flexDirection = "column"; infoEl.style.justifyContent = "flex-start";
+					infoEl.style.display = "flex";
+					infoEl.style.flexDirection = "column";
+					infoEl.style.flexGrow = "1";
+
+					if (isVertical) {
+						infoEl.style.width = "100%";
+						infoEl.style.height = `${100 - imgRatio}%`;
+					} else {
+						infoEl.style.width = `${100 - imgRatio}%`;
+						infoEl.style.height = "100%";
+					}
+
 					if (data.title) {
 						const tEl = infoEl.createEl("div", { text: data.title, cls: "card-title" });
 						tEl.style.fontSize = titleSize; tEl.style.lineHeight = "1.2"; tEl.style.marginBottom = "2px";
@@ -138,6 +172,112 @@ export default class MyPlugin extends Plugin {
 			});
 		});
 		this.addSettingTab(new SampleSettingTab(this.app, this));
+	}
+
+	async handleAction(actionString: string) {
+		const parts = actionString.split("|").map(s => s.trim());
+		const type = parts[0];
+		if (!type) return;
+
+		const val1 = parts[1] ?? "";
+		const val2 = parts[2] ?? val1;
+
+		switch (type) {
+			case "url":
+				if (!val1) return;
+				const mobileScheme = parts[2];
+				const isMobileDevice = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+				const finalDesktopUrl = val1.startsWith("http") ? val1 : `https://${val1}`;
+				if (isMobileDevice && mobileScheme) {
+					let appOpened = false;
+					const onVisibilityChange = () => { if (document.visibilityState === "hidden") appOpened = true; };
+					document.addEventListener("visibilitychange", onVisibilityChange, { once: true });
+					window.location.href = mobileScheme;
+					setTimeout(() => {
+						document.removeEventListener("visibilitychange", onVisibilityChange);
+						if (!appOpened) window.open(finalDesktopUrl);
+					}, 500);
+				} else { window.open(finalDesktopUrl); }
+				break;
+			case "copy": if (!val2) return; await navigator.clipboard.writeText(val2); new Notice(`복사되었습니다: ${val2}`); break;
+			case "command": if (!val2) return; (this.app as any).commands.executeCommandById(val2); break;
+			case "open": if (!val2) return; await this.app.workspace.openLinkText(val2, "", true); break;
+			case "search": if (!val2) return;
+				const searchPlugin = (this.app as any).internalPlugins.getPluginById("global-search");
+				if (searchPlugin) searchPlugin.instance.openGlobalSearch(val2);
+				break;
+			case "create":
+				if (!val1) return;
+				const rawArgs = parts.slice(2).join("|");
+				this.createNewFileFromTemplate(val1, rawArgs);
+				break;
+			case "js": if (!val2) return;
+				try {
+					const obsidian = require('obsidian');
+					new Function('app', 'Notice', 'obsidian', val2)(this.app, Notice, obsidian);
+				} catch (e) { new Notice("JS 실행 오류"); }
+				break;
+			default: new Notice(`알 수 없는 액션: ${type}`);
+		}
+	}
+
+	async createNewFileFromTemplate(tPath: string, rawArgs: string = "") {
+		try {
+			const tFile = this.app.metadataCache.getFirstLinkpathDest(tPath, "");
+			if (!tFile || !(tFile instanceof TFile)) return new Notice("템플릿 탐색 실패");
+			let content = await this.app.vault.read(tFile);
+
+			let newProps: any = {};
+			if (rawArgs.trim().startsWith("{")) {
+				try { newProps = JSON.parse(rawArgs); } catch { new Notice("JSON 형식 오류"); }
+			} else if (rawArgs.trim().length > 0) {
+				newProps = { tags: rawArgs.split(",").map(t => t.trim()) };
+			}
+
+			if (Object.keys(newProps).length > 0) content = this.mergeYaml(content, newProps);
+
+			const now = new Date();
+			const dateStr = `${now.getFullYear()}년 ${String(now.getMonth() + 1).padStart(2, '0')}월 ${String(now.getDate()).padStart(2, '0')}일`;
+			const timeStr = `${String(now.getHours()).padStart(2, '0')}시 ${String(now.getMinutes()).padStart(2, '0')}분 ${String(now.getSeconds()).padStart(2, '0')}초 생성`;
+			let base = `무제 ${dateStr} ${timeStr}`;
+			let finalPath = `${base}.md`;
+			let counter = 1;
+			while (await this.app.vault.adapter.exists(finalPath)) finalPath = `${base} (${counter++}).md`;
+
+			const nFile = await this.app.vault.create(finalPath, content);
+			await this.app.workspace.getLeaf('tab').openFile(nFile);
+			new Notice("병합 완료");
+		} catch (e) { new Notice("생성 실패"); }
+	}
+
+	private mergeYaml(content: string, props: any) {
+		if (content.startsWith("---")) {
+			const parts = content.split("---");
+			const yamlPart = parts[1];
+			if (yamlPart && parts.length >= 3) {
+				let yamlLines = yamlPart.split("\n").filter(l => l.trim() !== "");
+				for (const [key, value] of Object.entries(props)) {
+					const idx = yamlLines.findIndex(l => l.trim().startsWith(`${key}:`));
+					if (idx !== -1) {
+						if (Array.isArray(value)) yamlLines.splice(idx + 1, 0, ...value.map(v => `  - ${v}`));
+						else yamlLines[idx] = `${key}: ${value}`;
+					} else {
+						if (Array.isArray(value)) { yamlLines.push(`${key}:`); yamlLines.push(...value.map(v => `  - ${v}`)); }
+						else yamlLines.push(`${key}: ${value}`);
+					}
+				}
+				parts[1] = "\n" + yamlLines.join("\n") + "\n";
+				return parts.join("---");
+			}
+		} else {
+			let newYaml = "---\n";
+			for (const [key, value] of Object.entries(props)) {
+				if (Array.isArray(value)) newYaml += `${key}:\n${value.map(v => `  - ${v}`).join("\n")}\n`;
+				else newYaml += `${key}: ${value}\n`;
+			}
+			return newYaml + "---\n\n" + content;
+		}
+		return content;
 	}
 
 	buildLivePreviewPlugin() {
@@ -170,134 +310,6 @@ export default class MyPlugin extends Plugin {
 		}, { decorations: v => v.decorations });
 	}
 
-	async handleAction(actionString: string) {
-		const parts = actionString.split("|").map(s => s.trim());
-		const type = parts[0];
-		if (!type) return;
-		let defaultValue = parts[2] || parts[1];
-		switch (type) {
-			case "url": {
-				const desktopUrl = parts[1]; const mobileScheme = parts[2];
-				if (!desktopUrl) return;
-				const isMobileDevice = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-				const finalDesktopUrl = desktopUrl.startsWith("http") ? desktopUrl : `https://${desktopUrl}`;
-				if (isMobileDevice && mobileScheme) {
-					let appOpened = false;
-					const onVisibilityChange = () => { if (document.visibilityState === "hidden") appOpened = true; };
-					document.addEventListener("visibilitychange", onVisibilityChange, { once: true });
-					window.location.href = mobileScheme;
-					setTimeout(() => {
-						document.removeEventListener("visibilitychange", onVisibilityChange);
-						if (!appOpened) window.open(finalDesktopUrl);
-					}, 500);
-				} else { window.open(finalDesktopUrl); }
-				break;
-			}
-			case "copy": if (!defaultValue) return; await navigator.clipboard.writeText(defaultValue); new Notice(`복사되었습니다: ${defaultValue}`); break;
-			case "command": if (!defaultValue) return; // @ts-ignore
-				this.app.commands.executeCommandById(defaultValue); break;
-			case "open": if (!defaultValue) return; await this.app.workspace.openLinkText(defaultValue, "", true); break;
-			case "search": if (!defaultValue) return;
-				const searchPlugin = (this.app as any).internalPlugins.getPluginById("global-search");
-				if (searchPlugin) searchPlugin.instance.openGlobalSearch(defaultValue);
-				else new Notice("검색 플러그인 비활성 상태"); break;
-			case "create": {
-				if (!parts[1]) return;
-				const templatePath = parts[1];
-				const rawArgs = parts.slice(2).join("|");
-				this.createNewFileFromTemplate(templatePath, rawArgs);
-				break;
-			}
-			case "js": if (!defaultValue) return;
-				try {
-					const obsidian = require('obsidian');
-					new Function('app', 'Notice', 'obsidian', defaultValue)(this.app, Notice, obsidian);
-				} catch (e) { new Notice("JS 실행 오류: " + (e instanceof Error ? e.message : String(e))); }
-				break;
-			default: new Notice(`알 수 없는 액션: ${type}`);
-		}
-	}
-	async createNewFileFromTemplate(tPath: string, rawArgs: string = "") {
-		try {
-			const tFile = this.app.metadataCache.getFirstLinkpathDest(tPath, "");
-			if (!tFile) {
-				new Notice(`템플릿을 찾을 수 없습니다: ${tPath}`);
-				return;
-			}
-			let content = await this.app.vault.read(tFile as TFile);
-
-			let newProps: any = {};
-			if (rawArgs.trim().startsWith("{")) {
-				try { newProps = JSON.parse(rawArgs); } catch (e) { new Notice("JSON 형식 오류"); }
-			} else if (rawArgs.trim().length > 0) {
-				newProps = { tags: rawArgs.split(",").map(t => t.trim()) };
-			}
-
-			if (Object.keys(newProps).length > 0) {
-				if (content.startsWith("---")) {
-					const parts = content.split("---");
-					const yamlPart = parts[1]!;
-					if (parts.length >= 3) {
-						let yamlLines = yamlPart.split("\n").filter(line => line.trim() !== "");
-
-						for (const [key, value] of Object.entries(newProps)) {
-							const keyIndex = yamlLines.findIndex(line => line.trim().startsWith(`${key}:`));
-
-							if (keyIndex !== -1) {
-								if (Array.isArray(value)) {
-									const newItems = value.map(v => `  - ${v}`);
-									yamlLines.splice(keyIndex + 1, 0, ...newItems);
-								} else {
-									yamlLines[keyIndex] = `${key}: ${value}`;
-								}
-							} else {
-								if (Array.isArray(value)) {
-									yamlLines.push(`${key}:`);
-									yamlLines.push(...value.map(v => `  - ${v}`));
-								} else {
-									yamlLines.push(`${key}: ${value}`);
-								}
-							}
-						}
-						parts[1] = "\n" + yamlLines.join("\n") + "\n";
-						content = parts.join("---");
-					}
-				} else {
-					let newYaml = "---\n";
-					for (const [key, value] of Object.entries(newProps)) {
-						if (Array.isArray(value)) {
-							newYaml += `${key}:\n${value.map(v => `  - ${v}`).join("\n")}\n`;
-						} else {
-							newYaml += `${key}: ${value}\n`;
-						}
-					}
-					content = newYaml + "---\n\n" + content;
-				}
-			}
-
-			const now = new Date();
-			const dateStr = `${now.getFullYear()}년 ${String(now.getMonth() + 1).padStart(2, '0')}월 ${String(now.getDate()).padStart(2, '0')}일`;
-			const timeStr = `${String(now.getHours()).padStart(2, '0')}시 ${String(now.getMinutes()).padStart(2, '0')}분 ${String(now.getSeconds()).padStart(2, '0')}초 생성`;
-			let baseFileName = `무제 ${dateStr} ${timeStr}`;
-			let finalPath = `${baseFileName}.md`;
-			let counter = 1;
-
-			while (await this.app.vault.adapter.exists(finalPath)) {
-				finalPath = `무제 ${dateStr} ${timeStr} (${counter}).md`;
-				counter++;
-			}
-
-			const nFile = await this.app.vault.create(finalPath, content);
-			if (nFile) {
-				await this.app.workspace.getLeaf('tab').openFile(nFile);
-				new Notice("병합 완료");
-			}
-		} catch (e) {
-			console.error(e);
-			new Notice("생성 실패");
-		}
-	}
-
 	resolveImagePath(p: string) {
 		const f = this.app.metadataCache.getFirstLinkpathDest(p, "");
 		return f instanceof TFile ? this.app.vault.adapter.getResourcePath(f.path) : (p.startsWith("http") ? p : "");
@@ -325,11 +337,10 @@ function renderInlineButton(el: HTMLElement, content: string, plugin: MyPlugin) 
 	el.addClass("inline-card-button");
 	if (bgColor) el.style.backgroundColor = bgColor;
 	const iconMap: Record<string, string> = { copy: "copy", command: "terminal", url: "external-link", open: "file-text", search: "search", create: "plus-square", js: "code-2" };
-	const iconId = type.includes("-") || type.length > 10 ? type : (iconMap[type] || type || "square-asterisk");
+	const iconId = iconMap[type] || "square-asterisk";
 	const iconSpan = el.createEl("span", { cls: "inline-button-icon" });
 	setIcon(iconSpan, iconId);
-	const displayText = label || value;
-	const textSpan = el.createEl("span", { text: displayText, cls: "inline-button-text" });
+	const textSpan = el.createEl("span", { text: label || value, cls: "inline-button-text" });
 	if (iconColor) { iconSpan.style.color = iconColor; textSpan.style.color = iconColor; }
 	el.onclick = (e) => { e.preventDefault(); e.stopPropagation(); plugin.handleAction(content); };
 }
