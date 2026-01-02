@@ -1,5 +1,5 @@
 import {
-    App, TFile,
+    App, TFile, setIcon,
     Editor, EditorPosition, EditorSuggest, EditorSuggestContext, EditorSuggestTriggerInfo,
 } from 'obsidian';
 
@@ -7,22 +7,23 @@ interface ActionKeyword {
     label: string;
     value: string;
     desc: string;
+    icon: string;
 }
 
 export default class ActionSuggest extends EditorSuggest<ActionKeyword> {
     private actionList: ActionKeyword[] = [
-        { label: "url", value: "url | ", desc: "외부 웹사이트 연결 (데스크탑/모바일 대응)" },
-        { label: "create", value: "create | ", desc: "템플릿 기반 새 파일 생성 및 속성 주입" },
-        { label: "open", value: "open | ", desc: "옵시디언 내부 파일 또는 링크 열기" },
-        { label: "copy", value: "copy | ", desc: "지정한 텍스트를 클립보드에 복사" },
-        { label: "command", value: "command | ", desc: "옵시디언 명령(Command) 실행" },
-        { label: "search", value: "search | ", desc: "전체 검색창 열기 및 검색어 입력" },
-        { label: "js", value: "js | ", desc: "커스텀 자바스크립트 코드 실행" }
+        { label: "url", value: "url | ", desc: "외부 웹사이트 연결 (데스크탑/모바일 대응)", icon: "external-link" },
+        { label: "create", value: "create | ", desc: "템플릿 기반 새 파일 생성 및 속성 주입", icon: "plus-square" },
+        { label: "open", value: "open | ", desc: "옵시디언 내부 파일 또는 링크 열기", icon: "file-text" },
+        { label: "copy", value: "copy | ", desc: "지정한 텍스트를 클립보드에 복사", icon: "copy" },
+        { label: "command", value: "command | ", desc: "옵시디언 명령(Command) 실행", icon: "terminal" },
+        { label: "search", value: "search | ", desc: "전체 검색창 열기 및 검색어 입력", icon: "search" },
+        { label: "js", value: "js | ", desc: "커스텀 자바스크립트 코드 실행", icon: "code-2" }
     ];
 
     constructor(app: App) { super(app); }
 
-    onTrigger(cursor: EditorPosition, editor: Editor, file: TFile): EditorSuggestTriggerInfo | null {
+    onTrigger(cursor: EditorPosition, editor: Editor, file: TFile | null): EditorSuggestTriggerInfo | null {
         const line = editor.getLine(cursor.line);
         const sub = line.substring(0, cursor.ch);
         const match = sub.match(/action\s*[:|]\s*$/);
@@ -42,15 +43,33 @@ export default class ActionSuggest extends EditorSuggest<ActionKeyword> {
     }
 
     renderSuggestion(item: ActionKeyword, el: HTMLElement): void {
-        el.createEl("div", {
-            text: "⚡ " + item.label,
-            cls: "action-suggestion-title",
-            attr: { style: "font-weight: bold; color: var(--text-accent);" }
+        el.addClass("action-suggestion-item");
+        el.style.display = "flex";
+        el.style.alignItems = "center";
+        el.style.gap = "10px";
+        el.style.padding = "6px 10px";
+
+        // 1. 아이콘 영역
+        const iconContainer = el.createEl("div", { cls: "action-icon" });
+        iconContainer.style.display = "flex";
+        iconContainer.style.color = "var(--text-accent)";
+        setIcon(iconContainer, item.icon);
+
+        // 2. 텍스트 정보 영역
+        const textContainer = el.createEl("div", { cls: "action-content" });
+        textContainer.style.display = "flex";
+        textContainer.style.flexDirection = "column";
+
+        textContainer.createEl("div", {
+            text: item.label,
+            cls: "action-label",
+            attr: { style: "font-weight: 600; font-size: 0.95em; color: var(--text-normal);" }
         });
-        el.createEl("small", {
+
+        textContainer.createEl("div", {
             text: item.desc,
-            cls: "action-suggestion-desc",
-            attr: { style: "display: block; font-size: 0.8em; opacity: 0.7;" }
+            cls: "action-desc",
+            attr: { style: "font-size: 0.8em; color: var(--text-muted); line-height: 1.2;" }
         });
     }
 

@@ -10,6 +10,7 @@ import {
 import { DEFAULT_SETTINGS, MyPluginSettings, SampleSettingTab } from "./settings";
 import FileSuggest from './file-suggest';
 import ActionSuggest from './action-suggest';
+import SettingSuggest from 'setting-suggest';
 
 interface CardData {
 	title?: string;
@@ -25,7 +26,7 @@ export default class MyPlugin extends Plugin {
 		await this.loadSettings();
 		this.registerEditorSuggest(new FileSuggest(this.app));
 		this.registerEditorSuggest(new ActionSuggest(this.app));
-
+		this.registerEditorSuggest(new SettingSuggest(this.app));
 		this.registerEditorExtension(this.buildLivePreviewPlugin());
 
 		this.registerMarkdownPostProcessor((el, ctx) => {
