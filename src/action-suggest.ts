@@ -44,32 +44,45 @@ export default class ActionSuggest extends EditorSuggest<ActionKeyword> {
 
     renderSuggestion(item: ActionKeyword, el: HTMLElement): void {
         el.addClass("action-suggestion-item");
-        el.style.display = "flex";
-        el.style.alignItems = "center";
-        el.style.gap = "10px";
-        el.style.padding = "6px 10px";
 
-        // 1. 아이콘 영역
-        const iconContainer = el.createEl("div", { cls: "action-icon" });
-        iconContainer.style.display = "flex";
-        iconContainer.style.color = "var(--text-accent)";
-        setIcon(iconContainer, item.icon);
-
-        // 2. 텍스트 정보 영역
-        const textContainer = el.createEl("div", { cls: "action-content" });
-        textContainer.style.display = "flex";
-        textContainer.style.flexDirection = "column";
-
-        textContainer.createEl("div", {
-            text: item.label,
-            cls: "action-label",
-            attr: { style: "font-weight: 600; font-size: 0.95em; color: var(--text-normal);" }
+        el.setCssProps({
+            "display": "flex",
+            "align-items": "center",
+            "gap": "10px",
+            "padding": "6px 10px"
         });
 
-        textContainer.createEl("div", {
+        const iconContainer = el.createEl("div", { cls: "action-icon" });
+        iconContainer.setCssProps({
+            "display": "flex",
+            "color": "var(--text-accent)"
+        });
+        setIcon(iconContainer, item.icon);
+
+        const textContainer = el.createEl("div", { cls: "action-content" });
+        textContainer.setCssProps({
+            "display": "flex",
+            "flex-direction": "column"
+        });
+
+        const labelEl = textContainer.createEl("div", {
+            text: item.label,
+            cls: "action-label"
+        });
+        labelEl.setCssProps({
+            "font-weight": "600",
+            "font-size": "0.95em",
+            "color": "var(--text-normal)"
+        });
+
+        const descEl = textContainer.createEl("div", {
             text: item.desc,
-            cls: "action-desc",
-            attr: { style: "font-size: 0.8em; color: var(--text-muted); line-height: 1.2;" }
+            cls: "action-desc"
+        });
+        descEl.setCssProps({
+            "font-size": "0.8em",
+            "color": "var(--text-muted)",
+            "line-height": "1.2"
         });
     }
 
