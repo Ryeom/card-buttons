@@ -225,12 +225,20 @@ export default class MyPlugin extends Plugin {
 	async createNewFileFromTemplate(tPath: string, rawArgs: string = "") {
 		try {
 			const tFile = this.app.metadataCache.getFirstLinkpathDest(tPath, "");
-			if (!tFile || !(tFile instanceof TFile)) return new Notice("템플릿 탐색 실패");
+			if (!tFile || !(tFile instanceof TFile)) {
+				new Notice("템플릿 탐색 실패");
+				return;
+			}
 			let content = await this.app.vault.read(tFile);
 
 			let newProps: any = {};
 			if (rawArgs.trim().startsWith("{")) {
-				try { newProps = JSON.parse(rawArgs); } catch { new Notice("JSON 형식 오류"); }
+				try {
+					newProps = JSON.parse(rawArgs);
+				} catch {
+					new Notice("JSON 형식 오류");
+					return;
+				}
 			} else if (rawArgs.trim().length > 0) {
 				newProps = { tags: rawArgs.split(",").map(t => t.trim()) };
 			}
