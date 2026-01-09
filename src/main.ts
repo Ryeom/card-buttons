@@ -383,15 +383,19 @@ class CardBlockRenderer extends MarkdownRenderChild {
 
 					const styleTag = document.head.createEl("style", { attr: { id: `style-tag-${id}` } });
 
-					// !important 자동 주입
-					const importantCSS = fullCSS.replace(/([^;{}]+:[^;{}]+)(?=[;}]|$)/g, (match) => {
-						if (match.includes('!important') || match.trim().startsWith('/*')) return match;
-						return `${match.trim()} !important`;
+					// Scoped CSS Injection (No more forced !important)
+					// .card-item -> div[data-style-id] .card-item
+					const scopedCSS = fullCSS.replace(/([^;{}]+)(?=\{)/g, (selectors) => {
+						return selectors.split(",").map(selector => {
+							const trimmed = selector.trim();
+							if (trimmed.includes(".card-buttons-container")) {
+								return trimmed.replace(".card-buttons-container", `div[${scopeAttr}]`);
+							}
+							return `div[${scopeAttr}] ${trimmed}`;
+						}).join(", ");
 					});
 
-					styleTag.textContent = importantCSS.replace(/([^\r\n,{}]+)(?=[^{]*\{)/g, (match) => {
-						return match.split(',').map(s => `div[${scopeAttr}] ${s.trim()}`).join(', ');
-					});
+					styleTag.textContent = scopedCSS;
 				}
 			});
 		}
@@ -403,7 +407,7 @@ class CardBlockRenderer extends MarkdownRenderChild {
 		cardSections.forEach((section) => {
 			const data = this.plugin.parseSection(section);
 
-			// Resolve logic for all fields
+			// Resolve Dynamic Text
 			if (data.title) data.title = resolveDynamicText(this.plugin.app, data.title);
 			if (data.desc) data.desc = resolveDynamicText(this.plugin.app, data.desc);
 			if (data.action) data.action = resolveDynamicText(this.plugin.app, data.action);
@@ -411,8 +415,14 @@ class CardBlockRenderer extends MarkdownRenderChild {
 			const rawIf = data.if ? resolveDynamicText(this.plugin.app, data.if) : "true";
 			if (rawIf === "false" || rawIf === "null" || rawIf === "undefined") return;
 
-			const rawColor = data.color ? resolveDynamicText(this.plugin.app, data.color) : "";
-			const rawTextColor = data.textColor ? resolveDynamicText(this.plugin.app, data.textColor) : "";
+			// Resolve Color from Palette or Raw
+			let rawColor = data.color ? resolveDynamicText(this.plugin.app, data.color) : "";
+			const paletteColor = this.plugin.settings.palettes[rawColor];
+			if (paletteColor) rawColor = paletteColor;
+
+			let rawTextColor = data.textColor ? resolveDynamicText(this.plugin.app, data.textColor) : "";
+			const paletteTextColor = this.plugin.settings.palettes[rawTextColor];
+			if (paletteTextColor) rawTextColor = paletteTextColor;
 
 			const cardEl = container.createEl("div", { cls: "card-item" });
 
@@ -420,9 +430,9 @@ class CardBlockRenderer extends MarkdownRenderChild {
 			if (rawColor) cardEl.style.backgroundColor = rawColor;
 			if (rawTextColor) {
 				cardEl.style.color = rawTextColor;
-			} else if (rawColor === "red" || rawColor.startsWith("#ff0000") || rawColor === "#f00") {
-				// Auto-contrast for red (simple heuristic)
-				cardEl.style.color = "white";
+			} else if (rawColor) {
+				// Simple Auto-contrast
+				if (rawColor === "red" || rawColor.startsWith("#ff0000") || rawColor === "#f00") cardEl.style.color = "white";
 			}
 
 			const isVertical = direction === "vertical";
