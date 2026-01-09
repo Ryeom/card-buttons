@@ -120,6 +120,74 @@ class CSSEditModal extends Modal {
 				text.inputEl.style.width = "100%";
 			});
 
+		// Quick Palette Bar
+		const paletteContainer = rightPane.createEl("div");
+
+		// Header for Palette
+		const pHeader = paletteContainer.createEl("div");
+		pHeader.style.display = "flex";
+		pHeader.style.justifyContent = "space-between";
+		pHeader.style.alignItems = "center";
+		pHeader.style.marginBottom = "5px";
+		pHeader.createEl("small", { text: "🎨 퀵 팔레트 (클릭하여 복사)", cls: "setting-item-description" });
+
+		// Scrollable Bar
+		const paletteBar = paletteContainer.createEl("div");
+		paletteBar.style.display = "flex";
+		paletteBar.style.gap = "8px";
+		paletteBar.style.overflowX = "auto";
+		paletteBar.style.padding = "5px 2px";
+		paletteBar.style.marginBottom = "10px";
+		paletteBar.style.borderBottom = "1px solid var(--background-modifier-border)";
+
+		// Hide scrollbar logic (optional, but cleaner)
+		paletteBar.style.setProperty("-ms-overflow-style", "none");
+		paletteBar.style.setProperty("scrollbar-width", "none");
+
+		// Access settings via app or pass plugin instance. 
+		// Since we only passed 'app', we need to retrieve the plugin instance or settings.
+		// NOTE: CSSEditModal doesn't have direct access to 'plugin' instance yet.
+		// However, we can access it via app.plugins if needed, OR better, pass 'settings' to constructor.
+		// For now, let's try to get it from the app since we are inside a plugin.
+		// Actually, let's just use the known settings shape if possible, or pass it.
+		// To adhere to strict TS, best to pass `plugin` to Modal.
+		// But I will use a safe cast for now to avoid changing constructor signature too much unless necessary.
+		const plugin = (this.app as any).plugins.getPlugin("with-buttons");
+		const palettes = plugin?.settings?.palettes || {};
+
+		Object.entries(palettes).forEach(([name, color]) => {
+			const item = paletteBar.createEl("div");
+			item.style.flex = "0 0 auto"; // No shrinking
+			item.style.cursor = "pointer";
+			item.style.display = "flex";
+			item.style.flexDirection = "column";
+			item.style.alignItems = "center";
+			item.style.gap = "2px";
+			item.title = `클릭하면 '${color}' 복사`;
+
+			// Color Circle
+			const circle = item.createEl("div");
+			circle.style.width = "24px";
+			circle.style.height = "24px";
+			circle.style.borderRadius = "50%";
+			circle.style.backgroundColor = color as string;
+			circle.style.border = "1px solid var(--background-modifier-border)";
+
+			// Name Label
+			const label = item.createEl("div", { text: name });
+			label.style.fontSize = "10px";
+			label.style.maxWidth = "60px";
+			label.style.overflow = "hidden";
+			label.style.textOverflow = "ellipsis";
+			label.style.whiteSpace = "nowrap";
+			label.style.color = "var(--text-muted)";
+
+			item.addEventListener("click", () => {
+				navigator.clipboard.writeText(color as string);
+				new Notice(`색상 복사완료: ${color}`);
+			});
+		});
+
 		rightPane.createEl("h4", { text: "CSS Editor", cls: "setting-item-name" });
 		this.textArea = new TextAreaComponent(rightPane);
 		this.textArea.inputEl.style.width = "100%";
