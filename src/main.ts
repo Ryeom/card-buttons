@@ -1,6 +1,6 @@
 import {
 	Plugin, TFile, Notice, setIcon,
-	MarkdownRenderChild
+	MarkdownRenderChild, App
 } from 'obsidian';
 import {
 	ViewUpdate, ViewPlugin, DecorationSet, Decoration,
@@ -105,6 +105,11 @@ export default class MyPlugin extends Plugin {
 
 			cardSections.forEach((section) => {
 				const data = this.parseSection(section);
+
+				// Resolve dynamic text for Title and Description
+				if (data.title) data.title = resolveDynamicText(this.app, data.title);
+				if (data.desc) data.desc = resolveDynamicText(this.app, data.desc);
+
 				const cardEl = container.createEl("div", { cls: "card-item" });
 
 				const isVertical = direction === "vertical";
@@ -352,11 +357,46 @@ export default class MyPlugin extends Plugin {
 	async saveSettings() { await this.saveData(this.settings); }
 }
 
+/**
+ * Evaluates a string containing ${...} placeholders using the Dataview API.
+ */
+function resolveDynamicText(app: App, text: string): string {
+	if (!text.includes("${")) return text;
+
+	// Get Dataview API (Try plugin manager first, then global window object)
+	let dv = (app as any).plugins.getPlugin("dataview")?.api;
+	if (!dv) {
+		dv = (window as any).DataviewAPI;
+	}
+
+	if (!dv) {
+		console.warn("With Buttons: Dataview API not found. Please ensure Dataview is installed and enabled.");
+		return text;
+	}
+
+	try {
+		// Replace ${code} with the evaluated result
+		return text.replace(/\$\{([\s\S]*?)\}/g, (_, code) => {
+			// Create a function with 'dv' and 'app' in scope
+			const func = new Function("dv", "app", `try { return ${code}; } catch(e) { console.error("Dynamic Eval Error:", e); return "Err"; }`);
+			const result = func(dv, app);
+			return String(result ?? "");
+		});
+	} catch (e) {
+		console.error("Dynamic text evaluation failed:", e);
+		return text;
+	}
+}
+
 function renderInlineButton(el: HTMLElement, content: string, plugin: MyPlugin) {
 	const parts = content.split("|").map(p => p.trim());
 	const type = parts[0] || "";
 	const label = parts[1] || "";
 	const value = parts[2] || parts[1] || "";
+
+	// Resolve dynamic text for Label
+	const finalLabel = resolveDynamicText(plugin.app, label);
+
 	const iconColor = parts[3]; const bgColor = parts[4];
 	el.addClass("inline-card-button");
 	if (bgColor) el.style.backgroundColor = bgColor;
@@ -364,7 +404,7 @@ function renderInlineButton(el: HTMLElement, content: string, plugin: MyPlugin) 
 	const iconId = iconMap[type] || "square-asterisk";
 	const iconSpan = el.createEl("span", { cls: "inline-button-icon" });
 	setIcon(iconSpan, iconId);
-	const textSpan = el.createEl("span", { text: label || value, cls: "inline-button-text" });
+	const textSpan = el.createEl("span", { text: finalLabel || value, cls: "inline-button-text" });
 	if (iconColor) { iconSpan.style.color = iconColor; textSpan.style.color = iconColor; }
 	el.onclick = (e) => { e.preventDefault(); e.stopPropagation(); plugin.handleAction(content); };
 }
